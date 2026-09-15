@@ -1,0 +1,47 @@
+{
+  "build": "3.4.3.54261",
+  "build_config": "c91609c69ed2ab39d44039390a1be969",
+  "cdn_config": "a838aeb3cda2e027e9c96bd9953944b3",
+  "product_config": "fac7680539cd51bc0a791a88ade3da21",
+  "original_executable_sha256": "e223876717c726575696997b13a656e9f1ace8ef1e66ac9b4fa966b715c035fd",
+  "sources": {
+    "wow-patcher": {
+      "url": "https://github.com/wowemulation-dev/wow-patcher.git",
+      "commit": "f296b2b84c833742ef9f4761de40b8b81b29f01a"
+    },
+    "cascette-py": {
+      "url": "https://github.com/wowemulation-dev/cascette-py.git",
+      "commit": "dc0dfb89b146d80b363741de25c2be340c2da8fd"
+    },
+    "HermesProxy": {
+      "url": "https://github.com/Vinges541/HermesProxy.git",
+      "commit": "e4217bfc722e65e7257d5a50084f8a34cb503b34"
+    }
+  },
+  "tools": {
+    "uv-arm64": {
+      "url": "https://github.com/astral-sh/uv/releases/download/0.8.22/uv-aarch64-apple-darwin.tar.gz",
+      "sha256": "3f61099e261e449527141dbf125629fab33ad696468c8c90cebbac40185a306c"
+    },
+    "rust-arm64": {
+      "url": "https://static.rust-lang.org/dist/rust-1.92.0-aarch64-apple-darwin.tar.xz",
+      "sha256": "22276ecf826b22e718f099d7bf7ddb8c88aa46230fdba74962ab3c5031472268"
+    },
+    "uv-x86_64": {
+      "url": "https://github.com/astral-sh/uv/releases/download/0.8.22/uv-x86_64-apple-darwin.tar.gz",
+      "sha256": "76638fdcfa91357858771551a1c88de1f7c3b270b33ab1866f8a0618d9e442d8"
+    },
+    "rust-x86_64": {
+      "url": "https://static.rust-lang.org/dist/rust-1.92.0-x86_64-apple-darwin.tar.xz",
+      "sha256": "ef71fcdcd50efd3301144e701faf15124113a1b2efe9a111175d7d1e4f2d31d2"
+    },
+    "dotnet-arm64": {
+      "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.100/dotnet-sdk-10.0.100-osx-arm64.tar.gz",
+      "sha512": "0ee9c774f9c63601844619b67d6ca829d70fa26b9949b808e801380c35edb12e4c9418baf8e2ef8ba1dc6dc7d307dbf5830fb0f4f97666032a391c5c097ee607"
+    },
+    "dotnet-x86_64": {
+      "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.100/dotnet-sdk-10.0.100-osx-x64.tar.gz",
+      "sha512": "595c3c661a705a256f52e03e3aeeb86753ad6f9aa3d59f487304cdbbb744a39f4e3fa6445a60cded6bc78e12f51d52ed5a183ea70a0560b96bed61fb83958f81"
+    }
+  }
+}

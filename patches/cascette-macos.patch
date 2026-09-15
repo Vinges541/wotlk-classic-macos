@@ -1,0 +1,320 @@
+diff --git a/README.md b/README.md
+index 59038d6..b610419 100644
+--- a/README.md
++++ b/README.md
+@@ -133,6 +133,19 @@ build_info = BuildInfo(
+ )
+ ```
+ 
++## Local storage directories
++
++These environment variables relocate the default tool-owned directories:
++
++| Variable | Default |
++|---|---|
++| `CASCETTE_CACHE_DIR` | `~/.cache/cascette` |
++| `CASCETTE_CONFIG_DIR` | `~/.config/cascette-tools` |
++| `CASCETTE_DATA_DIR` | `~/.local/share/cascette-tools` |
++
++Explicit constructor or application configuration paths take precedence. The
++installer's encoding lookup cache follows the application data directory.
++
+ ## Package Structure
+ 
+ ```text
+diff --git a/cascette_tools/commands/install.py b/cascette_tools/commands/install.py
+index 9433ee1..75bf830 100644
+--- a/cascette_tools/commands/install.py
++++ b/cascette_tools/commands/install.py
+@@ -75,6 +75,7 @@ from cascette_tools.formats.file_db import FileDatabase, FileDatabaseParser
+ from cascette_tools.formats.install import InstallEntry, InstallParser, InstallTag
+ from cascette_tools.formats.patch_archive import PatchArchiveParser, PatchEntry
+ from cascette_tools.formats.size import (
++    SizeEntry,
+     SizeFile,
+     SizeParser,
+     SizeTag,
+@@ -110,7 +111,7 @@ def _ecache_path(install_path: Path) -> Path:
+     """
+     import hashlib
+ 
+-    data_dir = Path.home() / ".local" / "share" / "cascette-tools"
++    data_dir = AppConfig().data_dir
+     key = hashlib.sha256(str(install_path.resolve()).encode()).hexdigest()[:16]
+     return data_dir / "ecache" / key
+ 
+@@ -1075,6 +1076,7 @@ def filter_entries_by_tags(
+     arch: str | None = None,
+     locale: str | None = None,
+     size_tags: list[SizeTag] | None = None,
++    size_entries: list[SizeEntry] | None = None,
+ ) -> list[DownloadEntry]:
+     """Filter download entries by platform, architecture, and locale tags.
+ 
+@@ -1083,9 +1085,9 @@ def filter_entries_by_tags(
+     - Apply tag query using bitmap operations (one bit per file)
+     - Supports subtractive tags with '!' prefix
+ 
+-    When size_tags are provided (from the size manifest), they are used
+-    directly as the canonical tag source. Otherwise, download manifest tags
+-    are converted to SizeTag format.
++    Size-manifest tags index size_entries, whose ordering differs from the
++    download manifest. Resolve their selection by encoding key before
++    applying it to download entries. Without them, use download tags.
+ 
+     Args:
+         entries: List of DownloadEntry objects
+@@ -1094,6 +1096,7 @@ def filter_entries_by_tags(
+         arch: Architecture filter (e.g., "x86_64", "arm64")
+         locale: Locale filter (e.g., "enUS", "deDE")
+         size_tags: Optional list of SizeTag objects from size manifest
++        size_entries: Size-manifest entries required alongside size_tags
+ 
+     Returns:
+         Filtered list of entries
+@@ -1116,7 +1119,20 @@ def filter_entries_by_tags(
+     # Use size manifest tags directly if provided, otherwise convert from
+     # download manifest tags
+     if size_tags is not None:
+-        effective_tags = size_tags
++        if size_entries is None:
++            raise ValueError("size_tags require size_entries for encoding-key mapping")
++        if not size_entries:
++            return []
++        key_size = len(size_entries[0].key)
++        if not key_size or any(len(e.key) != key_size for e in size_entries):
++            raise ValueError("Size manifest has inconsistent encoding-key lengths")
++        bitmap = apply_tag_query(size_tags, query, len(size_entries))
++        selected_keys = {
++            entry.key
++            for i, entry in enumerate(size_entries)
++            if is_file_selected(bitmap, i)
++        }
++        return [entry for entry in entries if entry.ekey[:key_size] in selected_keys]
+     else:
+         effective_tags = [
+             SizeTag(
+@@ -2625,6 +2641,7 @@ def install_to_casc(
+                 arch=arch,
+                 locale=locale,
+                 size_tags=size_file.tags,
++                size_entries=size_file.entries,
+             )
+         else:
+             download_entries = filter_entries_by_tags(
+diff --git a/cascette_tools/core/cache.py b/cascette_tools/core/cache.py
+index d40e24a..f174c64 100644
+--- a/cascette_tools/core/cache.py
++++ b/cascette_tools/core/cache.py
+@@ -3,6 +3,7 @@
+ from __future__ import annotations
+ 
+ import json
++import os
+ import time
+ from pathlib import Path
+ from typing import Any, cast
+@@ -37,7 +38,12 @@ class DiskCache:
+         Args:
+             base_dir: Base cache directory, defaults to ~/.cache/cascette
+         """
+-        self.base_dir = base_dir or (Path.home() / ".cache" / "cascette")
++        configured_dir = os.environ.get("CASCETTE_CACHE_DIR")
++        self.base_dir = base_dir or (
++            Path(configured_dir)
++            if configured_dir
++            else Path.home() / ".cache" / "cascette"
++        )
+         self.cdn_dir = self.base_dir / "cdn"
+         self.api_dir = self.base_dir / "api"
+         self.metadata_file = self.base_dir / "metadata.json"
+diff --git a/cascette_tools/core/config.py b/cascette_tools/core/config.py
+index f7e8f69..6b294c2 100644
+--- a/cascette_tools/core/config.py
++++ b/cascette_tools/core/config.py
+@@ -3,6 +3,7 @@
+ from __future__ import annotations
+ 
+ import json
++import os
+ from pathlib import Path
+ from typing import Any
+ 
+@@ -236,11 +237,19 @@ class AppConfig(BaseModel):
+ 
+     # Directory settings
+     config_dir: Path = Field(
+-        default=Path.home() / ".config" / "cascette-tools",
++        default_factory=lambda: Path(
++            os.environ.get(
++                "CASCETTE_CONFIG_DIR", Path.home() / ".config" / "cascette-tools"
++            )
++        ),
+         description="Configuration directory",
+     )
+     data_dir: Path = Field(
+-        default=Path.home() / ".local" / "share" / "cascette-tools",
++        default_factory=lambda: Path(
++            os.environ.get(
++                "CASCETTE_DATA_DIR", Path.home() / ".local" / "share" / "cascette-tools"
++            )
++        ),
+         description="Data directory",
+     )
+ 
+diff --git a/cascette_tools/core/local_storage.py b/cascette_tools/core/local_storage.py
+index f8910ae..b050711 100644
+--- a/cascette_tools/core/local_storage.py
++++ b/cascette_tools/core/local_storage.py
+@@ -377,8 +377,8 @@ class UpdateEntry:
+ # Update section constants (V7 idx, matching cascette-rs and the 1.13.2
+ # reference installation):
+ # - Update section starts at a 4KB-aligned boundary after the sorted section.
+-# - Reference files are exactly IDX_FILE_SIZE bytes; the update section
+-#   fills the remainder.
++# - Small reference files use IDX_FILE_SIZE bytes. Larger sorted sections
++#   still need reserved update pages after their aligned end.
+ UPDATE_PAGE_SIZE = 0x1000  # 4KB pages
+ UPDATE_SECTION_ALIGNMENT = 0x1000  # 4KB alignment after sorted section
+ UPDATE_SECTION_MIN_SIZE = 12 * UPDATE_PAGE_SIZE  # 0xC000 = 48 KB
+@@ -990,7 +990,8 @@ class LocalStorage:
+           0x28: Sorted entries (N * 18 bytes)
+           Pad to 4KB-aligned boundary after the sorted section
+           aligned: Update section (24-byte entries in 4KB pages), file
+-                   padded to IDX_FILE_SIZE (0x30000) total
++                   at least UPDATE_SECTION_MIN_SIZE bytes; small files
++                   are padded to IDX_FILE_SIZE (0x30000) total
+         """
+         header = LocalIndexHeader(bucket=bucket)
+         header_data = header.to_bytes()  # 16 bytes
+@@ -1011,12 +1012,10 @@ class LocalStorage:
+         update_start = (sorted_section_end + UPDATE_SECTION_ALIGNMENT - 1) & ~(
+             UPDATE_SECTION_ALIGNMENT - 1
+         )
+-        # The reference install pads every idx file to IDX_FILE_SIZE
+-        # (0x30000); the update section is the remainder after the aligned
+-        # sorted section. Bucket files with ~8200 entries have 11-12 pages.
+-        update_size = IDX_FILE_SIZE - update_start
+-        if update_size < 0:
+-            update_size = 0
++        # The sorted section can exceed the small reference file size.
++        # Preserve update capacity in that case: an absent/truncated update
++        # section makes the native client reject the entire mapping table.
++        update_size = max(IDX_FILE_SIZE - update_start, UPDATE_SECTION_MIN_SIZE)
+ 
+         with open(path, "wb") as f:
+             # 0x00: Header guarded block (8 bytes)
+diff --git a/tests/test_commands/test_install_utils.py b/tests/test_commands/test_install_utils.py
+index c33a26b..307b506 100644
+--- a/tests/test_commands/test_install_utils.py
++++ b/tests/test_commands/test_install_utils.py
+@@ -9,7 +9,7 @@ from cascette_tools.commands.install import (
+ )
+ from cascette_tools.core.types import Product
+ from cascette_tools.formats.download import DownloadEntry, DownloadTag
+-from cascette_tools.formats.size import SizeTag
++from cascette_tools.formats.size import SizeEntry, SizeTag
+ 
+ 
+ class TestFmtSize:
+@@ -184,6 +184,9 @@ class TestFilterEntriesByTags:
+             [],
+             platform="Windows",
+             size_tags=sample_size_tags,
++            size_entries=[
++                SizeEntry(key=e.ekey[:9], esize=e.size) for e in sample_entries
++            ],
+         )
+         assert len(result) == 1
+         assert result[0].ekey == b"\x01" * 16
+@@ -199,9 +202,38 @@ class TestFilterEntriesByTags:
+             platform="Windows",
+             locale="enUS",
+             size_tags=sample_size_tags,
++            size_entries=[
++                SizeEntry(key=e.ekey[:9], esize=e.size) for e in sample_entries
++            ],
+         )
+         assert len(result) >= 1
+ 
++    def test_size_tags_map_by_key_after_reordering_and_priority_filter(
++        self, sample_entries: list[DownloadEntry], sample_size_tags: list[SizeTag]
++    ) -> None:
++        # The Windows bit selects the first SIZE entry, which is the last
++        # DOWNLOAD entry here. Filtering by priority must retain that identity.
++        size_entries = [
++            SizeEntry(key=e.ekey[:9], esize=e.size) for e in reversed(sample_entries)
++        ]
++        for downloads in (sample_entries, sample_entries[1:]):
++            selected = filter_entries_by_tags(
++                downloads,
++                [],
++                platform="Windows",
++                size_tags=sample_size_tags,
++                size_entries=size_entries,
++            )
++            assert selected == [sample_entries[-1]]
++
++    def test_size_tags_without_entry_mapping_are_rejected(
++        self, sample_entries: list[DownloadEntry], sample_size_tags: list[SizeTag]
++    ) -> None:
++        with pytest.raises(ValueError, match="encoding-key mapping"):
++            filter_entries_by_tags(
++                sample_entries, [], platform="Windows", size_tags=sample_size_tags
++            )
++
+     def test_platform_filter_with_download_tags(
+         self,
+         sample_entries: list[DownloadEntry],
+diff --git a/tests/test_core/test_large_local_index.py b/tests/test_core/test_large_local_index.py
+new file mode 100644
+index 0000000..00f87dd
+--- /dev/null
++++ b/tests/test_core/test_large_local_index.py
+@@ -0,0 +1,46 @@
++"""Large installs must retain writable update pages in every KMT bucket."""
++
++from pathlib import Path
++
++from cascette_tools.core.local_storage import (
++    IDX_FILE_SIZE,
++    UPDATE_SECTION_MIN_SIZE,
++    LocalIndexEntry,
++    LocalStorage,
++    parse_local_idx_file,
++)
++
++
++def test_large_sorted_section_retains_update_capacity(tmp_path: Path):
++    storage = LocalStorage(tmp_path)
++    storage.initialize()
++    entries = [
++        LocalIndexEntry(
++            key=i.to_bytes(9, "big"),
++            archive_id=0,
++            archive_offset=480 + i * 100,
++            size=100,
++        )
++        for i in range(1, 14001)
++    ]
++    storage.bucket_entries[0] = entries
++    storage.flush_indices()
++    path = storage.data_path / "0000000001.idx"
++    data = path.read_bytes()
++    sorted_end = 40 + int.from_bytes(data[32:36], "little")
++    assert sorted_end > IDX_FILE_SIZE
++    update_start = (sorted_end + 4095) & ~4095
++    assert len(data) - update_start >= UPDATE_SECTION_MIN_SIZE
++    assert not any(data[update_start:])
++    assert parse_local_idx_file(data).entries == entries
++
++    addition = LocalIndexEntry(
++        key=b"\xff" * 9, archive_id=1, archive_offset=480, size=70
++    )
++    original_size = path.stat().st_size
++    storage.insert_entry(0, addition)
++    assert path.stat().st_size == original_size
++    parsed = parse_local_idx_file(path.read_bytes())
++    assert parsed.entries == entries
++    assert len(parsed.update_entries) == 1
++    assert parsed.update_entries[0].key == addition.key

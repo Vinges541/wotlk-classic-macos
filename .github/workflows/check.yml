@@ -1,0 +1,26 @@
+name: Source and setup checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 30
+    env:
+      WRATH_STATE: ${{ github.workspace }}/.state
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build pinned source dependencies and TLS helper
+        run: ./setup.sh prepare --state "$WRATH_STATE"
+      - name: Python and real Security.framework checks
+        run: PYTHONPATH=scripts "$WRATH_STATE/venv/bin/python" -m unittest discover -s tests -v
+      - name: Rust patcher regression tests
+        run: |
+          if [ -x "$WRATH_STATE/tools/rust/bin/cargo" ]; then
+            export PATH="$WRATH_STATE/tools/rust/bin:$PATH"
+          fi
+          cargo test --locked --manifest-path "$WRATH_STATE/src/wow-patcher/Cargo.toml"
+          cargo fmt --manifest-path tls/Cargo.toml -- --check
+          cargo clippy --manifest-path tls/Cargo.toml -- -D warnings

@@ -1,0 +1,10 @@
+# Runtime/build dependencies of pinned cascette-py, plus its wheel backend.
+click>=8.3.0
+pydantic>=2.12.0
+httpx>=0.28.0
+rich>=14.3.0
+structlog>=25.5.0
+lz4>=4.4.0
+pycryptodome>=3.23.0
+protobuf>=5.0.0
+hatchling==1.27.0

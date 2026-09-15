@@ -1,0 +1,468 @@
+diff --git a/README.md b/README.md
+index 1341026..fce3a31 100644
+--- a/README.md
++++ b/README.md
+@@ -65,6 +65,19 @@ catalogued at [warcraft.wiki.gg][public-builds].
+ - Dry-run mode for previewing changes
+ - Automatic WoW executable detection on macOS
+ 
++### Universal macOS binaries
++
++Static patching validates and updates each architecture in a universal Mach-O
++file. Each selected pattern must appear exactly once per architecture, and its
++entire replacement must fit inside a data, constant, or C-string section.
++Ambiguous or incomplete matches fail before the output is written.
++
++Ed25519 patching follows the bytes present in the executable, including Wrath
++Classic clients. A dry run validates the complete patch in memory without
++writing a file. Updating these data fields does not establish that a particular
++client accepts a server's TLS certificate or completes login; verify that
++separately. Modified macOS app bundles also need a new code signature.
++
+ ## Installation
+ 
+ ### From Source
+diff --git a/src/binary/mod.rs b/src/binary/mod.rs
+index 0d7760c..6699988 100644
+--- a/src/binary/mod.rs
++++ b/src/binary/mod.rs
+@@ -1,6 +1,7 @@
+ use crate::errors::{ErrorCategory, WowPatcherError};
+ 
+ pub mod section;
++mod universal;
+ pub use section::{SectionInfo, check_offset_section, validate_patch_offsets};
+ 
+ pub type Pattern = Vec<i16>;
+@@ -86,6 +87,12 @@ impl DataExt for [u8] {
+ /// - `replace.len()` is longer than the bytes available from the
+ ///   match position to the end of `data`.
+ pub fn patch(data: &mut [u8], find: &Pattern, replace: &[u8]) -> Result<(), WowPatcherError> {
++    if let Some(positions) = universal::positions(data, find, replace.len())? {
++        for pos in positions {
++            data[pos..pos + replace.len()].copy_from_slice(replace);
++        }
++        return Ok(());
++    }
+     if data.is_empty() {
+         return Err(WowPatcherError::new(
+             ErrorCategory::PatchingError,
+@@ -157,6 +164,13 @@ pub fn patch_with_padding(
+             ),
+         ));
+     }
++    if let Some(positions) = universal::positions(data, find, slot_len)? {
++        for pos in positions {
++            data[pos..pos + slot_len].fill(0);
++            data[pos..pos + replace.len()].copy_from_slice(replace);
++        }
++        return Ok(());
++    }
+     let Some(pos) = find_pattern(data, find) else {
+         return Err(WowPatcherError::new(
+             ErrorCategory::PatchingError,
+diff --git a/src/binary/section.rs b/src/binary/section.rs
+index 38b2da1..9ea1a73 100644
+--- a/src/binary/section.rs
++++ b/src/binary/section.rs
+@@ -13,6 +13,12 @@ pub struct SectionInfo {
+ /// Check if a given file offset falls within a patchable section
+ /// Returns the section name if found and whether it's safe to patch
+ pub fn check_offset_section(data: &[u8], offset: usize) -> Option<SectionInfo> {
++    if let Some(ranges) = super::universal::slices(data).ok()? {
++        let range = ranges.into_iter().find(|range| range.contains(&offset))?;
++        let mut section = check_offset_section(&data[range.clone()], offset - range.start)?;
++        section.file_offset = section.file_offset.checked_add(range.start as u64)?;
++        return Some(section);
++    }
+     let obj = Object::parse(data).ok()?;
+ 
+     match obj {
+@@ -77,7 +83,7 @@ fn check_macho_offset(mach: &goblin::mach::Mach, offset: usize) -> Option<Sectio
+                                 let is_patchable = seg_name == "__DATA" ||
+                                                   seg_name == "__DATA_CONST" ||
+                                                   // __TEXT.__const is read-only data, sometimes patchable
+-                                                  (seg_name == "__TEXT" && section_name == "__const");
++                                                  (seg_name == "__TEXT" && matches!(section_name, "__const" | "__cstring"));
+ 
+                                 return Some(SectionInfo {
+                                     name: format!("{}.{}", seg_name, section_name),
+diff --git a/src/cmd/execute.rs b/src/cmd/execute.rs
+index d265c55..b093dc7 100644
+--- a/src/cmd/execute.rs
++++ b/src/cmd/execute.rs
+@@ -174,7 +174,6 @@ pub fn execute_patch(
+     }
+ 
+     if patches.contains(PatchGroup::ED25519)
+-        && client_type.uses_ed25519()
+         && let Some(offset) = data.find_pattern(crypto_ed_public_key_pattern())
+     {
+         offsets_to_validate.push((offset, "Ed25519 Public Key"));
+@@ -263,8 +262,7 @@ pub fn execute_patch(
+             strip_codesign,
+         );
+         println!();
+-        println!("No changes were made. Remove --dry-run to apply patches.");
+-        return Ok(());
++        println!("Validating all patch operations in memory.");
+     }
+ 
+     // --- Apply patches ---
+@@ -303,35 +301,21 @@ pub fn execute_patch(
+         println!("  ⋯ RSA modulus (skipped — not in --patches)");
+     }
+ 
+-    // 2. Ed25519 (optional based on client type)
++    // Select by the binary contents: Wrath Classic also embeds Ed25519.
+     if patches.contains(PatchGroup::ED25519) {
+-        if client_type.uses_ed25519() {
+-            if let Err(e) = patch(
++        if data.find_pattern(crypto_ed_public_key_pattern()).is_some() {
++            patch(
+                 &mut data,
+                 crypto_ed_public_key_pattern(),
+                 key_config.ed25519_public_key(),
+-            ) {
+-                if verbose {
+-                    println!(
+-                        "  ⚠ Ed25519 pattern not found (may be unsupported version): {}",
+-                        e
+-                    );
+-                }
+-            } else {
+-                patch_count += 1;
+-                if verbose {
+-                    if key_config.is_trinity_core() {
+-                        println!("  ✓ Ed25519 public key patched (TrinityCore key)");
+-                    } else {
+-                        println!("  ✓ Ed25519 public key patched (custom key)");
+-                    }
+-                }
++            )?;
++            patch_count += 1;
++            if verbose {
++                println!("Ed25519 public key patched");
+             }
+         } else if verbose {
+-            println!("  ℹ {} clients use RSA-based authentication", client_type);
++            println!("Ed25519 public key is absent in this client");
+         }
+-    } else if verbose {
+-        println!("  ⋯ Ed25519 (skipped — not in --patches)");
+     }
+ 
+     // 3. Cert-bundle injection (input-gated: requires --cert-bundle)
+@@ -430,7 +414,8 @@ pub fn execute_patch(
+             version_url.unwrap_or(&get_version_url(build_num, None, None)),
+             version_url_pattern().len(),
+         );
+-        if patch(&mut data, version_url_pattern(), &replacement_v1).is_ok() {
++        if data.find_pattern(version_url_pattern()).is_some() {
++            patch(&mut data, version_url_pattern(), &replacement_v1)?;
+             version_url_patched = true;
+             version_url_pattern_name = "v1";
+         } else {
+@@ -439,7 +424,8 @@ pub fn execute_patch(
+                 version_url.unwrap_or(&get_version_url(build_num, None, None)),
+                 version_url_v2_pattern().len(),
+             );
+-            if patch(&mut data, version_url_v2_pattern(), &replacement_v2).is_ok() {
++            if data.find_pattern(version_url_v2_pattern()).is_some() {
++                patch(&mut data, version_url_v2_pattern(), &replacement_v2)?;
+                 version_url_patched = true;
+                 version_url_pattern_name = "v2";
+             } else {
+@@ -448,7 +434,8 @@ pub fn execute_patch(
+                     version_url.unwrap_or(&get_unified_api_url(build_num)),
+                     version_url_v3_pattern().len(),
+                 );
+-                if patch(&mut data, version_url_v3_pattern(), &replacement_v3).is_ok() {
++                if data.find_pattern(version_url_v3_pattern()).is_some() {
++                    patch(&mut data, version_url_v3_pattern(), &replacement_v3)?;
+                     version_url_patched = true;
+                     version_url_pattern_name = "v3 (unified API)";
+                 }
+@@ -490,14 +477,8 @@ pub fn execute_patch(
+             cdns_url.unwrap_or(&get_cdns_url()),
+             cdns_url_pattern().len(),
+         );
+-        if let Err(e) = patch(&mut data, cdns_url_pattern(), &replacement) {
+-            if verbose {
+-                println!(
+-                    "  ⚠ CDNs URL pattern not found (may be custom build): {}",
+-                    e
+-                );
+-            }
+-        } else {
++        if data.find_pattern(cdns_url_pattern()).is_some() {
++            patch(&mut data, cdns_url_pattern(), &replacement)?;
+             patch_count += 1;
+             if verbose {
+                 if let Some(custom_url) = cdns_url {
+@@ -522,6 +503,11 @@ pub fn execute_patch(
+         ));
+     }
+ 
++    if dry_run {
++        println!("Dry run validated all patch operations; no output was written.");
++        return Ok(());
++    }
++
+     // Create output directory if needed
+     if let Some(parent) = output_path.parent()
+         && !parent.as_os_str().is_empty()
+@@ -624,7 +610,7 @@ fn dry_run_preview(
+ 
+     // Ed25519
+     if patches.contains(PatchGroup::ED25519) {
+-        if client_type.uses_ed25519() {
++        if data.find_pattern(crypto_ed_public_key_pattern()).is_some() {
+             let mut temp = data.to_vec();
+             if patch(
+                 &mut temp,
+diff --git a/src/binary/universal.rs b/src/binary/universal.rs
+new file mode 100644
+index 0000000..9db4183
+--- /dev/null
++++ b/src/binary/universal.rs
+@@ -0,0 +1,123 @@
++//! Plan fixed-size data edits in each architecture of a universal Mach-O file.
++
++use std::ops::Range;
++
++use goblin::{Object, mach::Mach};
++
++use super::{Pattern, check_offset_section, find_pattern};
++use crate::errors::{ErrorCategory, WowPatcherError};
++
++fn invalid(message: impl Into<String>) -> WowPatcherError {
++    WowPatcherError::new(ErrorCategory::ValidationError, message)
++}
++
++/// Return non-overlapping, bounded Mach-O slices, or `None` for a thin file.
++pub(super) fn slices(data: &[u8]) -> Result<Option<Vec<Range<usize>>>, WowPatcherError> {
++    if !matches!(
++        data.get(..4),
++        Some(
++            [0xca, 0xfe, 0xba, 0xbe]
++                | [0xbe, 0xba, 0xfe, 0xca]
++                | [0xca, 0xfe, 0xba, 0xbf]
++                | [0xbf, 0xba, 0xfe, 0xca]
++        )
++    ) {
++        return Ok(None);
++    }
++    let Object::Mach(Mach::Fat(fat)) = Object::parse(data)
++        .map_err(|error| invalid(format!("Invalid universal Mach-O: {error}")))?
++    else {
++        return Err(invalid("Unsupported universal Mach-O header"));
++    };
++    let arches = fat.arches().map_err(|error| invalid(error.to_string()))?;
++    if arches.is_empty() {
++        return Err(invalid("Universal Mach-O has no architectures"));
++    }
++    let table_end = 8usize
++        .checked_add(
++            arches
++                .len()
++                .checked_mul(20)
++                .ok_or_else(|| invalid("Architecture table overflow"))?,
++        )
++        .ok_or_else(|| invalid("Architecture table overflow"))?;
++    let mut ranges: Vec<Range<usize>> = Vec::new();
++    for arch in arches {
++        let start = arch.offset as usize;
++        let end = start
++            .checked_add(arch.size as usize)
++            .ok_or_else(|| invalid("Mach-O slice offset overflow"))?;
++        if start < table_end || start >= end || end > data.len() {
++            return Err(invalid(
++                "Mach-O slice is outside the file or overlaps its header",
++            ));
++        }
++        if ranges
++            .iter()
++            .any(|range| start < range.end && range.start < end)
++        {
++            return Err(invalid("Mach-O architecture slices overlap"));
++        }
++        match Object::parse(&data[start..end]) {
++            Ok(Object::Mach(Mach::Binary(macho))) if macho.header.cputype == arch.cputype => {}
++            _ => {
++                return Err(invalid(
++                    "Universal member is not the declared Mach-O architecture",
++                ));
++            }
++        }
++        ranges.push(start..end);
++    }
++    Ok(Some(ranges))
++}
++
++/// Validate every target before modifying any slice.
++pub(super) fn positions(
++    data: &[u8],
++    pattern: &Pattern,
++    write_len: usize,
++) -> Result<Option<Vec<usize>>, WowPatcherError> {
++    let Some(ranges) = slices(data)? else {
++        return Ok(None);
++    };
++    if pattern.is_empty() || write_len == 0 {
++        return Err(invalid(
++            "Universal patches require a nonempty pattern and replacement",
++        ));
++    }
++    let mut positions = Vec::new();
++    for range in ranges {
++        let member = &data[range.clone()];
++        let local = find_pattern(member, pattern).ok_or_else(|| {
++            invalid(format!(
++                "Pattern missing in Mach-O slice at 0x{:x}",
++                range.start
++            ))
++        })?;
++        if find_pattern(&member[local + 1..], pattern).is_some() {
++            return Err(invalid(format!(
++                "Ambiguous pattern in Mach-O slice at 0x{:x}",
++                range.start
++            )));
++        }
++        let span = write_len.max(pattern.len());
++        let end = local
++            .checked_add(span)
++            .ok_or_else(|| invalid("Patch range overflow"))?;
++        if end > member.len() {
++            return Err(invalid("Replacement extends past its Mach-O slice"));
++        }
++        let section = check_offset_section(member, local)
++            .ok_or_else(|| invalid("Cannot identify Mach-O patch section"))?;
++        let last = check_offset_section(member, end - 1)
++            .ok_or_else(|| invalid("Cannot identify end of Mach-O patch section"))?;
++        if !section.is_patchable
++            || section.file_offset != last.file_offset
++            || section.name != last.name
++        {
++            return Err(invalid("Mach-O patch must remain inside a data section"));
++        }
++        positions.push(range.start + local);
++    }
++    Ok(Some(positions))
++}
+diff --git a/tests/universal_macho.rs b/tests/universal_macho.rs
+new file mode 100644
+index 0000000..74d3e36
+--- /dev/null
++++ b/tests/universal_macho.rs
+@@ -0,0 +1,110 @@
++use wow_patcher::binary::{check_offset_section, patch, patch_with_padding, string_to_pattern};
++
++fn u32le(bytes: &mut [u8], offset: usize, value: u32) {
++    bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
++}
++
++fn u64le(bytes: &mut [u8], offset: usize, value: u64) {
++    bytes[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
++}
++
++fn member(cpu: u32, section: &[u8]) -> Vec<u8> {
++    let mut bytes = vec![0; 512];
++    for (offset, value) in [(0, 0xfeedfacf), (4, cpu), (12, 2), (16, 1), (20, 152)] {
++        u32le(&mut bytes, offset, value);
++    }
++    u32le(&mut bytes, 32, 0x19);
++    u32le(&mut bytes, 36, 152);
++    bytes[40..46].copy_from_slice(b"__TEXT");
++    u64le(&mut bytes, 56, 0x100000000);
++    u64le(&mut bytes, 64, 512);
++    u64le(&mut bytes, 80, 512);
++    u32le(&mut bytes, 88, 5);
++    u32le(&mut bytes, 92, 5);
++    u32le(&mut bytes, 96, 1);
++    bytes[104..104 + section.len()].copy_from_slice(section);
++    bytes[120..126].copy_from_slice(b"__TEXT");
++    u64le(&mut bytes, 136, 0x100000100);
++    u64le(&mut bytes, 144, 128);
++    u32le(&mut bytes, 152, 256);
++    bytes[256..260].copy_from_slice(b"PORT");
++    bytes
++}
++
++fn universal(section: &[u8]) -> Vec<u8> {
++    let mut bytes = vec![0; 0x2200];
++    bytes[..8].copy_from_slice(&[0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 2]);
++    for (index, cpu, start) in [(0, 0x1000007u32, 0x1000usize), (1, 0x100000c, 0x2000)] {
++        let table = 8 + index * 20;
++        for (offset, value) in [(0, cpu), (8, start as u32), (12, 512), (16, 12)] {
++            bytes[table + offset..table + offset + 4].copy_from_slice(&value.to_be_bytes());
++        }
++        bytes[start..start + 512].copy_from_slice(&member(cpu, section));
++    }
++    bytes
++}
++
++#[test]
++fn patches_both_architectures_without_changing_other_bytes() {
++    let mut bytes = universal(b"__const");
++    let mut expected = bytes.clone();
++    for offset in [0x1100, 0x2100] {
++        expected[offset..offset + 4].copy_from_slice(b"TEST");
++    }
++    patch(&mut bytes, &string_to_pattern("PORT"), b"TEST").unwrap();
++    assert_eq!(bytes, expected);
++}
++
++#[test]
++fn missing_second_target_does_not_modify_first_architecture() {
++    let mut bytes = universal(b"__const");
++    bytes[0x2100] = 0;
++    let original = bytes.clone();
++    assert!(patch(&mut bytes, &string_to_pattern("PORT"), b"TEST").is_err());
++    assert_eq!(bytes, original);
++}
++
++#[test]
++fn rejects_ambiguous_target_and_code_sections() {
++    for section in [b"__const".as_slice(), b"__text".as_slice()] {
++        let mut bytes = universal(section);
++        if section == b"__const" {
++            bytes[0x1110..0x1114].copy_from_slice(b"PORT");
++        }
++        let original = bytes.clone();
++        assert!(patch(&mut bytes, &string_to_pattern("PORT"), b"TEST").is_err());
++        assert_eq!(bytes, original);
++    }
++}
++
++#[test]
++fn rejects_cross_section_write_and_overlapping_slices() {
++    let mut bytes = universal(b"__const");
++    let original = bytes.clone();
++    assert!(patch(&mut bytes, &string_to_pattern("PORT"), &[1; 129]).is_err());
++    assert_eq!(bytes, original);
++    bytes[36..40].copy_from_slice(&0x1100u32.to_be_bytes());
++    let original = bytes.clone();
++    assert!(patch(&mut bytes, &string_to_pattern("PORT"), b"TEST").is_err());
++    assert_eq!(bytes, original);
++}
++
++#[test]
++fn padding_applies_to_both_string_sections() {
++    let mut bytes = universal(b"__cstring");
++    patch_with_padding(&mut bytes, &string_to_pattern("PORT"), b"A", 4).unwrap();
++    for offset in [0x1100, 0x2100] {
++        assert_eq!(&bytes[offset..offset + 4], b"A\0\0\0");
++    }
++    let section = check_offset_section(&bytes, 0x2100).unwrap();
++    assert_eq!(section.file_offset, 0x2100);
++    assert!(section.is_patchable);
++}
++
++#[test]
++fn malformed_fat_header_is_not_treated_as_unstructured_data() {
++    let mut bytes = b"\xca\xfe\xba\xbePORT".to_vec();
++    let original = bytes.clone();
++    assert!(patch(&mut bytes, &string_to_pattern("PORT"), b"TEST").is_err());
++    assert_eq!(bytes, original);
++}
