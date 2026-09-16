@@ -63,7 +63,7 @@ The launcher starts Hermes and the pinned metadata service automatically, keeps 
 
 Exact commits and archive checksums are in [`pins.json`](pins.json).
 
-- [Vinges541/HermesProxy, `wotlk-classic-macos` branch](https://github.com/Vinges541/HermesProxy/tree/wotlk-classic-macos): fork of Xian55/HermesProxy v4.5.3, preserving declined-name flags from legacy servers.
+- [Vinges541/HermesProxy, `wotlk-classic-macos` branch](https://github.com/Vinges541/HermesProxy/tree/wotlk-classic-macos): fork synchronized with Xian55/HermesProxy v4.5.5, preserving declined-name flags from legacy servers. The exact commit and build version are pinned in `pins.json`.
 - [wowemulation-dev/wow-patcher](https://github.com/wowemulation-dev/wow-patcher): universal Mach-O support in [`patches/wow-patcher-universal.patch`](patches/wow-patcher-universal.patch).
 - [wowemulation-dev/cascette-py](https://github.com/wowemulation-dev/cascette-py): corrected cross-manifest selection and CASC index capacity in [`patches/cascette-macos.patch`](patches/cascette-macos.patch).
 - [`tls/`](tls/): Rust process-local exact-leaf trust helper.

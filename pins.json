@@ -15,7 +15,8 @@
     },
     "HermesProxy": {
       "url": "https://github.com/Vinges541/HermesProxy.git",
-      "commit": "e4217bfc722e65e7257d5a50084f8a34cb503b34"
+      "commit": "15738894be2b255519fa88093e1dc0f0c15abdf7",
+      "version": "4.5.5"
     }
   },
   "tools": {

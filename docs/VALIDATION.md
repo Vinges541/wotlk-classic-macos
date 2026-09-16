@@ -14,6 +14,14 @@
 - The combined read-only audit accepted the existing native client and its CASC store.
 - Installer unit tests cover interrupted CASC recovery, corrupt data rejection, unsafe archive paths, symlink refusal and preservation of unrelated WTF settings.
 
+## Upstream synchronization, 2026-09-16
+
+- The pinned Hermes commit `15738894be2b255519fa88093e1dc0f0c15abdf7` includes Xian55 `master` at `9a8a9683ab373ccc4dd5df189413707e88ce51de` (tagged v4.5.5), plus the declined-name correction.
+- Release publish for `osx-arm64` succeeded. All 16 installer/TLS checks passed, including the four Security.framework checks run with the prepared TLS helper.
+- The full Hermes test run on macOS ARM64 with `en_US.UTF-8` reports 2,584 passed, 6 skipped and 1 failed. The failing upstream test, `SocketSendTimeoutTests.SendToAPeerThatNeverReads_TimesOutAndClosesTheConnection`, sets `SendBufferSize = 0`; macOS rejects that setup with `SocketException: Invalid argument` before the timeout assertion. The test file is unchanged from upstream.
+- TLS socket tests require permission to create a temporary macOS Keychain. The metrics formatting test assumes a decimal point, so the full test run uses the English locale.
+- The confirmed in-game session above used Hermes commit `e4217bfc722e65e7257d5a50084f8a34cb503b34`. Gameplay verification of the newly synchronized build is a separate step.
+
 ## Not yet established
 
 - A fresh, complete one-command game download on another Mac. The combined installer packages the locally tested recovery/build/patch steps; it must not be described as a multi-machine tested release.

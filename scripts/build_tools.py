@@ -44,14 +44,16 @@ def source(name, state):
 
 def version_source(repo):
     # GitVersion traverses history; this build uses an exact commit and explicit version.
+    version = PINS["sources"]["HermesProxy"]["version"]
+    major, minor, patch = version.split(".")
     date = subprocess.check_output(
         ["git", "-C", str(repo), "show", "-s", "--format=%cI", "HEAD"], text=True
     ).strip()
     fields = {
-        "Major": "4",
-        "Minor": "5",
-        "Patch": "3",
-        "MajorMinorPatch": "4.5.3",
+        "Major": major,
+        "Minor": minor,
+        "Patch": patch,
+        "MajorMinorPatch": version,
         "CommitsSinceVersionSource": "0",
         "UncommittedChanges": "1",
         "ShortSha": PINS["sources"]["HermesProxy"]["commit"][:7],
@@ -107,6 +109,7 @@ def build(state):
         ]
     )
     version_source(sources["HermesProxy"])
+    proxy_version = PINS["sources"]["HermesProxy"]["version"]
     proxy = state / "components/hermes"
     run(
         [
@@ -121,10 +124,10 @@ def build(state):
             "-p:DisableGitVersionTask=true",
             "-p:GenerateGitVersionInformation=false",
             "-p:UpdateVersionProperties=false",
-            "-p:Version=4.5.3",
-            "-p:AssemblyVersion=4.5.3",
-            "-p:FileVersion=4.5.3",
-            "-p:InformationalVersion=4.5.3-wotlk-classic-macos",
+            f"-p:Version={proxy_version}",
+            f"-p:AssemblyVersion={proxy_version}",
+            f"-p:FileVersion={proxy_version}",
+            f"-p:InformationalVersion={proxy_version}-wotlk-classic-macos",
             "-o",
             proxy,
         ]
