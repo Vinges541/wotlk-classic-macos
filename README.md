@@ -72,7 +72,7 @@ Dependencies are built from source. This project does not depend on the author's
 
 ## Validation and known limits
 
-Native ARM64 startup, Metal rendering, BNet/REST authentication and the character list have been verified on an Apple M3 Pro. The declined-name flag correction has been built and the existing character-list tests pass; the in-world retest is pending. See [`docs/VALIDATION.md`](docs/VALIDATION.md) for the precise boundary between tested components and unverified scenarios.
+Native ARM64 startup, Metal rendering, BNet/REST authentication and the character list have been verified on an Apple M3 Pro. After the declined-name flag correction, the tester confirmed successful world entry and character control with the ruRU client; a supplied screenshot shows the character inside Acherus. The existing character-list tests also pass. See [`docs/VALIDATION.md`](docs/VALIDATION.md) for the full validation scope.
 
 For Russian names, upstream Hermes v4.5.3 clears a flag meaning “declined names exist or are not required.” This makes the client request name cases even when the backend disabled them. Our fork preserves that flag. It does **not** implement the full declined-name editing protocol for servers that actually require it.
 
