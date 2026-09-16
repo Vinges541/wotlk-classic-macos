@@ -20,9 +20,9 @@ The script:
 4. Checks the selected content, CASC indices, original executable hash and Mach-O sections.
 5. Patches connection data in both native architectures and preserves executable code sections.
 6. Generates a unique local TLS certificate, installs the process-local trust helper and signs the app locally.
-7. Creates **WotLK Classic.app** in your user's Applications folder and starts the game with its bridge.
+7. Creates **World of Warcraft Classic.app** in your user's Applications folder and starts the game with its bridge.
 
-Enter your existing server account in the game. The installer never asks for a game password.
+Enter your existing server account in the game, or enable automatic login below. The installer does not ask for a game password.
 
 ### Requirements
 
@@ -42,14 +42,14 @@ The historical game files are fetched from external mirrors; their future availa
 |---|---|
 | Client data | `~/Games/WotLK Classic` |
 | Tools, local certificate, settings | `~/Library/Application Support/Wrath Classic Bridge` |
-| Launcher | `~/Applications/WotLK Classic.app` |
+| Launcher | `~/Applications/World of Warcraft Classic.app` |
 | Text/audio locale | `ruRU` |
 | Auth port | `3724` |
 
 ```sh
 ./setup.sh install --server server.example --auth-port 3724 --locale enUS
 ./setup.sh install --server server.example --target "/Volumes/Games/WotLK Classic"
-./setup.sh install --server server.example --launcher "/Applications/WotLK Classic.app"
+./setup.sh install --server server.example --launcher "/Applications/World of Warcraft Classic.app"
 ./setup.sh install --server server.example --no-launch
 ./setup.sh run
 ./setup.sh check
@@ -60,16 +60,36 @@ The historical game files are fetched from external mirrors; their future availa
 
 The launcher starts Hermes and the pinned metadata service automatically, keeps them alive while the client runs, and stops its own services when the client exits. It refuses occupied ports rather than terminating another service. It does not install a login item or background system service. Move neither the private state directory nor the client directory after installation; rerun setup with the intended paths instead.
 
-Open **WotLK Classic.app** to play. It waits for the local services before opening the game. If the native client was opened directly and is waiting to connect, opening the launcher starts its missing bridge and attaches to that client. When both are already running, it reuses the existing session. The launcher uses the installed client's icon.
+Open **World of Warcraft Classic.app** to play. It waits for the local services before opening the game. If the native client was opened directly and is waiting to connect, opening the launcher starts its missing bridge and attaches to that client. When both are already running, it reuses the existing session. The launcher uses the installed client's icon.
+
+## Automatic account login
+
+After setup, run this once from Terminal:
+
+```sh
+./setup.sh remember-account
+```
+
+Enter the account and password for your configured private server. The password is hidden while typing and saved in the macOS login Keychain, scoped to that server address and port. Use the same `--state` as installation if you changed it. macOS may ask to allow the setup's Python interpreter to access its saved Keychain item.
+
+The next time you open **World of Warcraft Classic.app**, it starts the bridge, obtains a fresh login ticket and logs into the account. Character selection remains yours. Opening the app again while the game is running reuses that session; it does not authenticate a second time. A directly opened native client keeps its current login screen.
+
+To return to manual login:
+
+```sh
+./setup.sh forget-account
+```
+
+If the saved account cannot be read or the server rejects it, the launcher opens the ordinary login form. After a disconnect, close the game and reopen the launcher to obtain a fresh ticket. Passwords and tickets are never passed in command-line arguments or environment variables. See [the login design](docs/LOGIN.md).
 
 ## Pinned sources
 
 Exact commits and archive checksums are in [`pins.json`](pins.json).
 
-- [Vinges541/HermesProxy, `wotlk-classic-macos` branch](https://github.com/Vinges541/HermesProxy/tree/wotlk-classic-macos): fork synchronized with Xian55/HermesProxy v4.5.5, preserving declined-name flags from legacy servers. The exact commit and build version are pinned in `pins.json`.
+- [Vinges541/HermesProxy, `launcher-login` branch](https://github.com/Vinges541/HermesProxy/tree/launcher-login): fork synchronized with Xian55/HermesProxy v4.5.5, preserving declined-name flags and supporting launcher login tickets. The exact commit and build version are pinned in `pins.json`.
 - [wowemulation-dev/wow-patcher](https://github.com/wowemulation-dev/wow-patcher): universal Mach-O support in [`patches/wow-patcher-universal.patch`](patches/wow-patcher-universal.patch).
 - [wowemulation-dev/cascette-py](https://github.com/wowemulation-dev/cascette-py): corrected cross-manifest selection and CASC index capacity in [`patches/cascette-macos.patch`](patches/cascette-macos.patch).
-- [`tls/`](tls/): Rust process-local exact-leaf trust helper.
+- [`tls/`](tls/): Rust process-local exact-leaf trust and launcher ticket helper.
 
 Dependencies are built from source. This project does not depend on the author's workstation, compiled artifacts or private paths.
 

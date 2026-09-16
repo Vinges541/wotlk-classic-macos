@@ -3,6 +3,7 @@
 //! matches a locally generated certificate. Security.framework still evaluates
 //! validity and policy; no success result is fabricated and no system trust changes.
 #![allow(non_snake_case)]
+mod login;
 use std::ffi::{c_char, c_int, c_void, CStr};
 use std::fs::{File, OpenOptions};
 use std::io::Write;

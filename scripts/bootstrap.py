@@ -76,6 +76,7 @@ def main():
         print(
             "Usage: ./setup.sh install --server HOST [--target DIRECTORY] [--state DIRECTORY] [--adopt]\n"
             "       ./setup.sh prepare|run|check|audit [--state DIRECTORY]\n\n"
+            "       ./setup.sh remember-account|forget-account [--state DIRECTORY]\n\n"
             "install downloads build 3.4.3.54261, builds patched tools and creates a launcher.\n"
             "--adopt verifies an existing installation instead of downloading game files.\n"
             "Requires macOS and Apple Command Line Tools (xcode-select --install).\n"

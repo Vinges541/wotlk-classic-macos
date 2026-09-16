@@ -14,7 +14,7 @@ from client import EXE_REL
 
 
 class BridgeTests(unittest.TestCase):
-    def run_launch(self, already_open):
+    def run_launch(self, already_open, login_error=False):
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp).resolve()
             target = state / "client"
@@ -35,16 +35,25 @@ class BridgeTests(unittest.TestCase):
                 patch.object(bridge.signal, "signal"),
                 patch.object(bridge.subprocess, "Popen", return_value=proxy) as start_proxy,
                 patch.object(bridge.subprocess, "run") as open_client,
+                patch.object(bridge.login, "prepare", return_value=["--args", "-launcherlogin"]) as prepare_login,
+                patch("sys.stdout", new_callable=io.StringIO) as output,
             ):
+                if login_error:
+                    prepare_login.side_effect = RuntimeError("synthetic-secret-error-body")
                 def opened(*args, **kwargs):
                     start_proxy.assert_called_once()
                     self.assertEqual(ports.call_count, 10)
                     running = list(state.glob("running.json"))
                     self.assertEqual(running, [])
+                    self.assertEqual("-launcherlogin" in args[0], not already_open and not login_error)
 
                 open_client.side_effect = opened
                 bridge.launch(state, config)
                 open_client.assert_called_once()
+                self.assertEqual(prepare_login.call_count, 0 if already_open else 1)
+                self.assertNotIn("synthetic-secret-error-body", output.getvalue())
+                if login_error:
+                    self.assertIn("use the game's login form", output.getvalue())
                 self.assertFalse((state / "running.json").exists())
                 proxy.terminate.assert_called_once()
                 server.shutdown.assert_called_once()
@@ -55,6 +64,9 @@ class BridgeTests(unittest.TestCase):
 
     def test_directly_opened_client_gets_missing_bridge(self):
         self.run_launch(already_open=True)
+
+    def test_failed_automatic_login_opens_manual_form_without_logging_error_body(self):
+        self.run_launch(already_open=False, login_error=True)
 
     def test_proxy_start_failure_closes_metadata_listener(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -90,8 +90,8 @@ def install_launcher(state, destination, client_app=None):
     info = {
         "CFBundleExecutable": "Launch",
         "CFBundleIdentifier": "dev.wotlk-classic-macos.launcher",
-        "CFBundleName": "WotLK Classic",
-        "CFBundleDisplayName": "WotLK Classic",
+        "CFBundleName": destination.stem,
+        "CFBundleDisplayName": destination.stem,
         "CFBundlePackageType": "APPL",
         "CFBundleVersion": "1",
         "LSUIElement": True,
@@ -113,14 +113,14 @@ def install_launcher(state, destination, client_app=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "command", choices=["install", "prepare", "run", "check", "audit"]
+        "command", choices=["install", "prepare", "run", "check", "audit", "remember-account", "forget-account"]
     )
     parser.add_argument("--state", type=Path, default=Path(os.environ["WRATH_STATE"]))
     parser.add_argument(
         "--target", type=Path, default=Path.home() / "Games/WotLK Classic"
     )
     parser.add_argument(
-        "--launcher", type=Path, default=Path.home() / "Applications/WotLK Classic.app"
+        "--launcher", type=Path, default=Path.home() / "Applications/World of Warcraft Classic.app"
     )
     parser.add_argument("--server")
     parser.add_argument("--auth-port", type=int, default=3724)
@@ -228,6 +228,22 @@ def main():
         target = verify(config)
         if args.command == "run":
             launch(state, config)
+        elif args.command in ("remember-account", "forget-account"):
+            from accounts import Keychain, service
+            name = service(json.loads((state / "hermes.json").read_text()))
+            keychain = Keychain()
+            if args.command == "forget-account":
+                keychain.delete(name)
+                print("Saved game account removed from Keychain.")
+            else:
+                import getpass
+                if not sys.stdin.isatty():
+                    raise RuntimeError("Save the account from an interactive terminal.")
+                username = input("Game account: ").strip()
+                password = getpass.getpass("Password (stored only in macOS Keychain): ")
+                keychain.save(name, username, password)
+                del password
+                print("Saved. The launcher will log in automatically on its next start.")
         elif args.command == "audit":
             from audit import audit
 

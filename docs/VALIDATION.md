@@ -19,7 +19,15 @@
 - Opening the installed launcher through macOS Launch Services started the metadata service, Hermes and the native client. All five local ports were ready, HTTPS login returned HTTP 200 with certificate validation, and native authentication reached the configured legacy server successfully.
 - Reopening the application reused the same client and proxy processes. The deployed application and support files run independently of the source checkout.
 - Five additional tests cover service readiness before opening the game, attaching to a directly opened client, service cleanup, rejecting a stale proxy PID and resetting counters without retaining raw protocol output.
-- This local launcher deployment reuses the game-tested Hermes revision `e4217bfc722e65e7257d5a50084f8a34cb503b34`. Fresh installations use the newer source pin documented below.
+- This initial launcher deployment reused the game-tested Hermes revision `e4217bfc722e65e7257d5a50084f8a34cb503b34`; the automatic-login update below replaces it.
+
+## Automatic login, 2026-09-16
+
+- Hermes revision `1d4d9a8143370bcc2b76b146016b932a01e1c291` adds cached web-ticket handling on top of the synchronized build below. All 61 BNet tests pass on macOS, including three new launcher-login cases.
+- The final source pin `b9c11c2737e19c3f381be56ce4cdbb2e2a3d9993` also makes legacy packet capture honor `PacketsLog=false`; two regression cases pass for client/server packet directions.
+- The native ARM64 client received a fresh ticket through private IPC and connected to the configured legacy world port without keyboard input. The tester confirmed that the realm-selection screen appeared automatically.
+- All 29 Python/native-helper tests pass. New cases cover malformed/missing IPC data, peer executable verification, credential scope, process-local preference handling and forwarding unrelated crypto calls. Rust formatting and Clippy checks pass.
+- This confirms account login through realm selection. It does not establish long gameplay stability of this newer Hermes build.
 
 ## Upstream synchronization, 2026-09-16
 

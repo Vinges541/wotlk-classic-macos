@@ -13,6 +13,7 @@ from pathlib import Path
 from common import checked_path, game_processes, lock, port_open, sha, write_json
 from client import APP_REL, EXE_REL
 from metadata_server import Handler, ThreadingHTTPServer
+import login
 
 PORTS = (1119, 8081, 8084, 8086, 8090)
 
@@ -187,6 +188,13 @@ def launch(state, config):
                 raise RuntimeError(
                     "HermesProxy did not become ready within 35 seconds."
                 )
+            login_args = []
+            if not client_pid:
+                try:
+                    login_args = login.prepare(state, config, exe, stack)
+                except (OSError, RuntimeError, ValueError):
+                    # Do not log exception bodies from authentication responses.
+                    print("Automatic login unavailable; use the game's login form.", flush=True)
             subprocess.run(
                 [
                     "open",
@@ -198,7 +206,7 @@ def launch(state, config):
                     "/dev/null",
                     "--stderr",
                     "/dev/null",
-                ],
+                ] + login_args,
                 check=True,
             )
             for _ in range(100):
