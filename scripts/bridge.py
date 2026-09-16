@@ -2,6 +2,7 @@
 
 import contextlib
 import ctypes
+import json
 import os
 import platform
 import signal
@@ -62,14 +63,18 @@ def verify(config):
 
 def counters(stream, state):
     counts = {
+        "backend_auth_attempts": 0,
         "backend_auth_succeeded": 0,
         "backend_auth_failed": 0,
         "realm_list_received": 0,
     }
+    write_json(state / "connection-status.json", counts)
     for line in stream:
         event = None
         if "AuthClient" in line:
-            if "Authentication succeeded!" in line:
+            if "Connecting to auth server..." in line:
+                event = "backend_auth_attempts"
+            elif "Authentication succeeded!" in line:
                 event = "backend_auth_succeeded"
             elif "Login failed. Reason:" in line or "Authentication failed!" in line:
                 event = "backend_auth_failed"
@@ -81,32 +86,68 @@ def counters(stream, state):
             write_json(state / "connection-status.json", counts)
 
 
+def existing_client(exe):
+    running = game_processes()
+    if not running:
+        return None
+    if len(running) != 1 or running[0][1] != str(exe):
+        raise RuntimeError(
+            "Another WoW client is running. Close it before starting Classic."
+        )
+    return running[0][0]
+
+
+def managed_bridge_ready(state, config, client_pid):
+    try:
+        running = json.loads((state / "running.json").read_text())
+        if running["client_pid"] != client_pid:
+            return False
+        supervisor, proxy = int(running["supervisor_pid"]), int(running["proxy_pid"])
+        if supervisor <= 0 or proxy <= 0:
+            return False
+        output = subprocess.run(
+            ["ps", "-p", f"{supervisor},{proxy}", "-o", "pid=,comm="],
+            check=False, capture_output=True, text=True,
+        ).stdout
+        processes = {}
+        for line in output.splitlines():
+            fields = line.strip().split(maxsplit=1)
+            if len(fields) == 2:
+                processes[int(fields[0])] = fields[1]
+        return (
+            supervisor in processes
+            and processes.get(proxy) == config["proxy"]
+            and all(port_open(p) for p in PORTS)
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
 def launch(state, config):
     if not session_unlocked():
         raise RuntimeError("Unlock the macOS session before launching native WoW.")
     target = verify(config)
     exe, app = target / EXE_REL, target / APP_REL
-    running = game_processes()
-    if running:
-        if len(running) == 1 and running[0][1] == str(exe):
-            subprocess.run(["open", "-a", str(app)], check=True)
-            return
-        raise RuntimeError(
-            "Another WoW client is running. Close it before starting Classic."
-        )
+    client_pid = existing_client(exe)
+    if client_pid and managed_bridge_ready(state, config, client_pid):
+        subprocess.run(["open", "-a", str(app)], check=True)
+        return
     with contextlib.ExitStack() as stack:
         stack.enter_context(lock(state / "session.lock"))
         if config.get("shared_lock"):
             stack.enter_context(lock(checked_path(config["shared_lock"])))
-        if game_processes():
-            raise RuntimeError("A WoW client was started concurrently.")
+        # A directly opened client may be waiting on localhost without its bridge.
+        # Attach to that same client after starting the missing services.
+        client_pid = existing_client(exe)
         occupied = [p for p in PORTS if port_open(p)]
         if occupied:
             raise RuntimeError(
                 "Required loopback ports are already occupied: " + str(occupied)
             )
         server = ThreadingHTTPServer(("127.0.0.1", 8090), Handler)
+        stack.callback(server.server_close)
         threading.Thread(target=server.serve_forever, daemon=True).start()
+        stack.callback(server.shutdown)
         env = dict(
             os.environ,
             DOTNET_DbgEnableMiniDump="0",
@@ -124,7 +165,6 @@ def launch(state, config):
         threading.Thread(
             target=counters, args=(proxy.stdout, state), daemon=True
         ).start()
-        client_pid = None
         stopping = threading.Event()
 
         def stop(*_):
@@ -198,6 +238,4 @@ def launch(state, config):
                 except subprocess.TimeoutExpired:
                     proxy.kill()
                     proxy.wait()
-            server.shutdown()
-            server.server_close()
             (state / "running.json").unlink(missing_ok=True)

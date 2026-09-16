@@ -10,9 +10,16 @@
 - Hermes declined-name flag correction builds; nine existing character-list tests pass.
 - After deploying the declined-name correction, the tester confirmed successful world entry and character control with the native ruRU client on 2026-09-16. A supplied screenshot shows the character inside Acherus, the in-game UI and AzerothCore server messages.
 - A fresh `prepare` run fetched the pinned public sources and built all three native tools without pre-existing build artifacts.
-- Sixteen installer/TLS tests pass; the patched Rust patcher passes 143 tests plus 18 documentation tests.
+- Twenty-one installer/TLS tests pass; the patched Rust patcher passes 143 tests plus 18 documentation tests.
 - The combined read-only audit accepted the existing native client and its CASC store.
 - Installer unit tests cover interrupted CASC recovery, corrupt data rejection, unsafe archive paths, symlink refusal and preservation of unrelated WTF settings.
+
+## Managed application launch, 2026-09-16
+
+- Opening the installed launcher through macOS Launch Services started the metadata service, Hermes and the native client. All five local ports were ready, HTTPS login returned HTTP 200 with certificate validation, and native authentication reached the configured legacy server successfully.
+- Reopening the application reused the same client and proxy processes. The deployed application and support files run independently of the source checkout.
+- Five additional tests cover service readiness before opening the game, attaching to a directly opened client, service cleanup, rejecting a stale proxy PID and resetting counters without retaining raw protocol output.
+- This local launcher deployment reuses the game-tested Hermes revision `e4217bfc722e65e7257d5a50084f8a34cb503b34`. Fresh installations use the newer source pin documented below.
 
 ## Upstream synchronization, 2026-09-16
 

@@ -49,6 +49,7 @@ The historical game files are fetched from external mirrors; their future availa
 ```sh
 ./setup.sh install --server server.example --auth-port 3724 --locale enUS
 ./setup.sh install --server server.example --target "/Volumes/Games/WotLK Classic"
+./setup.sh install --server server.example --launcher "/Applications/WotLK Classic.app"
 ./setup.sh install --server server.example --no-launch
 ./setup.sh run
 ./setup.sh check
@@ -58,6 +59,8 @@ The historical game files are fetched from external mirrors; their future availa
 `--state DIRECTORY` selects a separate setup state and must be supplied consistently. `prepare` builds only the pinned tools. `--adopt --target DIRECTORY` uses an existing **unmodified** Mac 54261 installation instead of downloading it. An already patched client requires `--original-executable FILE`: the original must match the pinned SHA-256, and every section of the installed client must match the expected patch.
 
 The launcher starts Hermes and the pinned metadata service automatically, keeps them alive while the client runs, and stops its own services when the client exits. It refuses occupied ports rather than terminating another service. It does not install a login item or background system service. Move neither the private state directory nor the client directory after installation; rerun setup with the intended paths instead.
+
+Open **WotLK Classic.app** to play. It waits for the local services before opening the game. If the native client was opened directly and is waiting to connect, opening the launcher starts its missing bridge and attaches to that client. When both are already running, it reuses the existing session. The launcher uses the installed client's icon.
 
 ## Pinned sources
 

@@ -49,7 +49,7 @@ def profile(server, port, state):
     }
 
 
-def install_launcher(state, destination):
+def install_launcher(state, destination, client_app=None):
     destination = checked_path(destination)
     marker = destination / "Contents/Resources/wotlk-classic-macos.json"
     if destination.exists() and not marker.exists():
@@ -74,7 +74,7 @@ def install_launcher(state, destination):
     write_json(marker, {"state": str(state)})
     executable = destination / "Contents/MacOS/Launch"
     executable.write_text(
-        "#!/bin/sh\nexport WRATH_STATE="
+        "#!/bin/sh\numask 077\nexport WRATH_STATE="
         + shlex.quote(str(state))
         + "\nexec "
         + shlex.quote(sys.executable)
@@ -96,6 +96,16 @@ def install_launcher(state, destination):
         "CFBundleVersion": "1",
         "LSUIElement": True,
     }
+    if client_app:
+        client_info = plistlib.loads((client_app / "Contents/Info.plist").read_bytes())
+        icon_name = client_info.get("CFBundleIconFile")
+        if icon_name and Path(icon_name).name == icon_name:
+            if not icon_name.endswith(".icns"):
+                icon_name += ".icns"
+            icon = client_app / "Contents/Resources" / icon_name
+            if icon.is_file():
+                shutil.copyfile(icon, marker.parent / "WoW.icns")
+                info["CFBundleIconFile"] = "WoW.icns"
     (destination / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
     return destination
 
@@ -178,7 +188,7 @@ def main():
             from build_tools import build
 
             tools = build(state)
-            from client import configure, download_client
+            from client import APP_REL, configure, download_client
 
             if not args.adopt and not existing:
                 download_client(target, state, args.locale)
@@ -191,7 +201,7 @@ def main():
             write_json(
                 state / "hermes.json", profile(args.server, args.auth_port, state)
             )
-            launcher = install_launcher(state, args.launcher)
+            launcher = install_launcher(state, args.launcher, target / APP_REL)
             config = {
                 "build": PINS["build"],
                 "target": str(target),
