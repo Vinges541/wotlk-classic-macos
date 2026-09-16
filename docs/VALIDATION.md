@@ -26,7 +26,9 @@
 - Hermes revision `1d4d9a8143370bcc2b76b146016b932a01e1c291` adds cached web-ticket handling on top of the synchronized build below. All 61 BNet tests pass on macOS, including three new launcher-login cases.
 - The final source pin `b9c11c2737e19c3f381be56ce4cdbb2e2a3d9993` also makes legacy packet capture honor `PacketsLog=false`; two regression cases pass for client/server packet directions.
 - The native ARM64 client received a fresh ticket through private IPC and connected to the configured legacy world port without keyboard input. The tester confirmed that the realm-selection screen appeared automatically.
+- The final update was installed in `World of Warcraft Classic.app` and launched through macOS Launch Services. Component hashes and the mapped native helper were verified; automatic login reached the legacy world connection. Reopening the application retained the same client/proxy processes, and no packet captures were created by the updated proxy. Account/WTF files and the native game executable were preserved.
 - All 29 Python/native-helper tests pass. New cases cover malformed/missing IPC data, peer executable verification, credential scope, process-local preference handling and forwarding unrelated crypto calls. Rust formatting and Clippy checks pass.
+- [GitHub Actions](https://github.com/Vinges541/wotlk-classic-macos/actions/runs/35088974792) independently built the pinned public sources and passed the Python/native-helper and Rust checks.
 - This confirms account login through realm selection. It does not establish long gameplay stability of this newer Hermes build.
 
 ## Upstream synchronization, 2026-09-16
