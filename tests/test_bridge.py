@@ -18,6 +18,10 @@ class BridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp).resolve()
             target = state / "client"
+            wtf = target / "_classic_/WTF/Config.wtf"
+            wtf.parent.mkdir(parents=True)
+            original_settings = 'SET portal "EU"\nSET gxResolution "1728x1117"\n'
+            wtf.write_text(original_settings)
             exe = str(target / EXE_REL)
             config = {"proxy": str(state / "HermesProxy")}
             first = [(42, exe)] if already_open else []
@@ -41,6 +45,13 @@ class BridgeTests(unittest.TestCase):
                 if login_error:
                     prepare_login.side_effect = RuntimeError("synthetic-secret-error-body")
                 def opened(*args, **kwargs):
+                    settings = wtf.read_text()
+                    self.assertIn('SET gxResolution "1728x1117"', settings)
+                    if already_open:
+                        self.assertEqual(settings, original_settings)
+                    else:
+                        self.assertIn('SET portal "localhost."', settings)
+                        self.assertNotIn('SET portal "EU"', settings)
                     start_proxy.assert_called_once()
                     self.assertEqual(ports.call_count, 10)
                     running = list(state.glob("running.json"))

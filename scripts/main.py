@@ -95,6 +95,7 @@ def install_launcher(state, destination, client_app=None):
         "CFBundlePackageType": "APPL",
         "CFBundleVersion": "1",
         "LSUIElement": True,
+        "NSMicrophoneUsageDescription": "World of Warcraft uses the microphone for in-game voice chat.",
     }
     if client_app:
         client_info = plistlib.loads((client_app / "Contents/Info.plist").read_bytes())

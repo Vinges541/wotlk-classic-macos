@@ -11,7 +11,7 @@ import threading
 import time
 from pathlib import Path
 from common import checked_path, game_processes, lock, port_open, sha, write_json
-from client import APP_REL, EXE_REL
+from client import APP_REL, EXE_REL, update_wtf
 from metadata_server import Handler, ThreadingHTTPServer
 import login
 
@@ -190,6 +190,12 @@ def launch(state, config):
                 )
             login_args = []
             if not client_pid:
+                # A client settings reset can restore Blizzard's regional portal.
+                # This launcher always connects through the local Hermes bridge.
+                wtf = checked_path(target / "_classic_/WTF/Config.wtf")
+                current = wtf.read_text() if wtf.exists() else ""
+                wtf.parent.mkdir(parents=True, exist_ok=True)
+                wtf.write_text(update_wtf(current, {"portal": "localhost."}))
                 try:
                     login_args = login.prepare(state, config, exe, stack)
                 except (OSError, RuntimeError, ValueError):
