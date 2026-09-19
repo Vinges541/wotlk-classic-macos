@@ -1,5 +1,7 @@
 # WotLK Classic HermesProxy Launcher
 
+**English** | [Русский](README.ru.md)
+
 Run **Wrath Classic 3.4.3.54261** against an existing **AzerothCore 3.3.5a / build 12340** server. The launcher installs the pinned client and starts its local HermesProxy bridge.
 
 | Platform | Status |
