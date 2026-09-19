@@ -1,8 +1,8 @@
-# WotLK Classic HermesProxy Launcher
+# WoTLK Classic HermesProxy Launcher
 
 **English** | [Русский](README.ru.md)
 
-Run **Wrath Classic 3.4.3.54261** against an existing **AzerothCore 3.3.5a / build 12340** server. The launcher installs the pinned client and starts its local HermesProxy bridge.
+Run **WoTLK Classic 3.4.3.54261** against an existing **AzerothCore 3.3.5a / build 12340** server. The launcher installs the pinned client and starts its local HermesProxy bridge.
 
 | Platform | Status |
 |---|---|
@@ -27,7 +27,7 @@ Setup installs missing tools into its private state directory. Allow **30 GiB** 
 | Item | Default |
 |---|---|
 | Client | `~/Games/WotLK Classic` |
-| State | `~/Library/Application Support/Wrath Classic Bridge` |
+| State | `~/Library/Application Support/WoTLK Classic Bridge` |
 | Launcher | `~/Applications/World of Warcraft Classic.app` |
 | Language | `ruRU` (also supports `enUS`) |
 | Server auth port | `3724` |
@@ -55,7 +55,7 @@ Requires **Python 3.13+**, **Git** and **.NET SDK 10+** on PATH. From PowerShell
 .\setup.ps1 run
 ```
 
-Use `--adopt --target "D:\Games\WotLK Classic"` to patch an existing stock **Windows x64 54261** client. Close WoW before installation. The installer creates **Play WotLK Classic.lnk** in the client directory. State defaults to `%LOCALAPPDATA%\Wrath Classic Bridge`.
+Use `--adopt --target "D:\Games\WotLK Classic"` to patch an existing stock **Windows x64 54261** client. Close WoW before installation. The installer creates **Play WotLK Classic.lnk** in the client directory. State defaults to `%LOCALAPPDATA%\WoTLK Classic Bridge`.
 
 The Windows path uses a build-specific data patcher and our small .NET login helper, with no Arctium dependency. The helper saves the password in **Windows Credential Manager**, obtains a new Hermes ticket on each launch, and supplies a DPAPI-encrypted ticket through a separate launcher registry key. `forget-account` removes the saved password.
 
@@ -85,6 +85,12 @@ On Windows, `setup.ps1 prepare` builds the pinned dependencies and helper withou
 License: GPL-3.0.
 
 Windows diagnostics: `./setup.ps1 run --verbose` writes sanitized events to
-`%LOCALAPPDATA%\Wrath Classic Bridge\verbose.jsonl`. Close WoW to finish the log
+`%LOCALAPPDATA%\WoTLK Classic Bridge\verbose.jsonl`. Close WoW to finish the log
 and copy it before the next verbose invocation. See [helper update instructions
 and diagnostic fields](docs/WINDOWS.md#verbose-diagnostics).
+
+Existing installations in the former state directory are detected automatically
+when the new default directory does not exist. Their paths and saved accounts
+are retained; the launcher does not move existing state. `--state` and
+`WRATH_STATE` still override the default. For verbose logs, use the actual path
+printed by the launcher.

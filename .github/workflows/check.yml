@@ -39,5 +39,7 @@ jobs:
         run: ./setup.ps1 prepare --state "${{ github.workspace }}/.state"
       - name: PE guards and bridge failure handling
         run: ./.state/venv/Scripts/python.exe -m unittest discover -s tests -p test_windows.py -v
+      - name: State directory compatibility
+        run: ./.state/venv/Scripts/python.exe -m unittest discover -s tests -p test_paths.py -v
       - name: Native Credential Manager and DPAPI checks
         run: ./.state/components/login/WrathLogin.exe self-test

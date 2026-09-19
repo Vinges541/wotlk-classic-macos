@@ -114,7 +114,7 @@ index d265c55..b093dc7 100644
      }
  
 -    // 2. Ed25519 (optional based on client type)
-+    // Select by the binary contents: Wrath Classic also embeds Ed25519.
++    // Select by the binary contents: WoTLK Classic also embeds Ed25519.
      if patches.contains(PatchGroup::ED25519) {
 -        if client_type.uses_ed25519() {
 -            if let Err(e) = patch(

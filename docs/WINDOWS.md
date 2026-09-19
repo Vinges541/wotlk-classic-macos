@@ -52,7 +52,7 @@ a catalog mismatch means `.build.info` does not contain the pinned build/CDN key
 ```
 
 Reproduce the disconnect, then close WoW normally so the supervisor writes its
-summary. Send `%LOCALAPPDATA%\Wrath Classic Bridge\verbose.jsonl` together with the
+summary. Send `%LOCALAPPDATA%\WoTLK Classic Bridge\verbose.jsonl` together with the
 client's `Connection.log` and `WowConnection.log`. With `--state`, the diagnostic
 file is in that directory. Copy it before another verbose command: it is replaced
 on each invocation. `--verbose` is also accepted during install/audit for catalog
@@ -71,3 +71,9 @@ The updated login helper reports saved-account presence, certificate match,
 4: client start. These HTTPS diagnostics apply to the helper; they do **not** prove
 that WoW accepts the certificate. Manual login skips the helper's HTTPS request.
 A `bridge_ready` event only establishes TCP listeners, not successful TLS/login.
+
+The new default state directory is `WoTLK Classic Bridge`. An existing directory
+under the former name is reused if the new directory does not exist. Explicit
+`--state` / `WRATH_STATE` settings take precedence; use the log path printed at
+startup for existing installations. Internal credential and helper identifiers
+remain compatible, preserving saved login.

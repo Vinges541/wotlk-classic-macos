@@ -11,6 +11,7 @@ import time
 import threading
 from pathlib import Path
 
+from paths import default_state
 from common import PINS, REPO, checked_path, game_closed, game_processes, lock, port_open, run, sha, write_json
 
 PORTS = (1119, 8081, 8084, 8086, 8090)
@@ -197,9 +198,9 @@ def launch(state, config, diagnostics=None):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='WotLK Classic HermesProxy Launcher — Windows x64')
+    parser = argparse.ArgumentParser(description='WoTLK Classic HermesProxy Launcher — Windows x64')
     parser.add_argument('command', choices=('prepare', 'install', 'run', 'check', 'audit', 'remember-account', 'forget-account'))
-    parser.add_argument('--state', type=Path, default=Path(os.environ.get('LOCALAPPDATA', Path.home())) / 'Wrath Classic Bridge')
+    parser.add_argument('--state', type=Path, default=default_state(windows=True))
     parser.add_argument('--target', type=Path, default=Path.home() / 'Games/WotLK Classic')
     parser.add_argument('--server')
     parser.add_argument('--auth-port', type=int, default=3724)

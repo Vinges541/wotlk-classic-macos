@@ -1,8 +1,8 @@
-# WotLK Classic HermesProxy Launcher
+# WoTLK Classic HermesProxy Launcher
 
 [English](README.md) | **Русский**
 
-Запускает **Wrath Classic 3.4.3.54261** для подключения к существующему серверу **AzerothCore 3.3.5a / сборка 12340**. Лаунчер устанавливает закреплённую версию клиента и запускает локальный мост HermesProxy.
+Запускает **WoTLK Classic 3.4.3.54261** для подключения к существующему серверу **AzerothCore 3.3.5a / сборка 12340**. Лаунчер устанавливает закреплённую версию клиента и запускает локальный мост HermesProxy.
 
 | Платформа | Статус |
 |---|---|
@@ -27,7 +27,7 @@
 | Объект или настройка | Значение по умолчанию |
 |---|---|
 | Клиент | `~/Games/WotLK Classic` |
-| Служебные данные | `~/Library/Application Support/Wrath Classic Bridge` |
+| Служебные данные | `~/Library/Application Support/WoTLK Classic Bridge` |
 | Лаунчер | `~/Applications/World of Warcraft Classic.app` |
 | Язык | `ruRU` (также поддерживается `enUS`) |
 | Порт авторизации сервера | `3724` |
@@ -55,7 +55,7 @@
 .\setup.ps1 run
 ```
 
-Чтобы пропатчить существующий немодифицированный клиент **Windows x64 54261**, добавьте `--adopt --target "D:\Games\WotLK Classic"`. Перед установкой закройте WoW. Установщик создаёт ярлык **Play WotLK Classic.lnk** в каталоге клиента. Служебные данные по умолчанию хранятся в `%LOCALAPPDATA%\Wrath Classic Bridge`.
+Чтобы пропатчить существующий немодифицированный клиент **Windows x64 54261**, добавьте `--adopt --target "D:\Games\WotLK Classic"`. Перед установкой закройте WoW. Установщик создаёт ярлык **Play WotLK Classic.lnk** в каталоге клиента. Служебные данные по умолчанию хранятся в `%LOCALAPPDATA%\WoTLK Classic Bridge`.
 
 Реализация для Windows использует патчер данных для конкретной сборки и небольшой собственный модуль входа на .NET, без зависимости от Arctium. Модуль сохраняет пароль в **Диспетчере учётных данных Windows**, при каждом запуске получает новый билет авторизации Hermes и передаёт его через отдельный раздел реестра лаунчера, зашифровав с помощью DPAPI. Команда `forget-account` удаляет сохранённый пароль.
 
@@ -85,7 +85,13 @@ PYTHONPATH=scripts .state/venv/bin/python -m unittest discover -s tests
 Лицензия: GPL-3.0.
 
 Для диагностики Windows: `.\setup.ps1 run --verbose`. После воспроизведения ошибки
-закройте WoW и сохраните `%LOCALAPPDATA%\Wrath Classic Bridge\verbose.jsonl`.
+закройте WoW и сохраните `%LOCALAPPDATA%\WoTLK Classic Bridge\verbose.jsonl`.
 Файл перезаписывается следующим запуском с `--verbose`; при `--state` он находится
 в указанном каталоге. Порядок обновления helper и состав безопасного лога:
 [диагностика Windows](docs/WINDOWS.md#verbose-diagnostics).
+
+Если новый каталог служебных данных ещё не существует, лаунчер автоматически
+использует существующий каталог прежней установки. Её пути и сохранённый вход
+сохраняются; данные автоматически не перемещаются. `--state` и `WRATH_STATE`
+по-прежнему задают каталог явно. Фактический путь verbose-лога лаунчер выводит
+при запуске.

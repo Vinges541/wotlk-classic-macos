@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from paths import default_state
+
 REPO = Path(__file__).resolve().parents[1]
 
 
@@ -16,7 +18,7 @@ def main():
         return
     if os.name != 'nt' or platform.machine().lower() not in ('amd64', 'x86_64'):
         raise SystemExit('Windows x64 is required. ARM64 support is deferred.')
-    state = Path(os.environ.get('WRATH_STATE', str(Path(os.environ['LOCALAPPDATA']) / 'Wrath Classic Bridge')))
+    state = default_state(windows=True)
     if '--state' in args:
         state = Path(args[args.index('--state') + 1])
     state = state.expanduser().absolute()

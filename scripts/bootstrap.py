@@ -12,14 +12,15 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
+from paths import default_state
+
 REPO = Path(__file__).resolve().parents[1]
-DEFAULT_STATE = Path.home() / "Library/Application Support/Wrath Classic Bridge"
 
 
 def state_arg(argv):
     if "--state" in argv:
         return Path(argv[argv.index("--state") + 1]).expanduser().absolute()
-    return Path(os.environ.get("WRATH_STATE", DEFAULT_STATE)).expanduser().absolute()
+    return default_state().expanduser().absolute()
 
 
 def download(pin, cache):
