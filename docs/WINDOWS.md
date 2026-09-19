@@ -136,3 +136,10 @@ entry thread while awaiting login/process work internally. Its `self-test-lock`
 command checks exclusion across an async thread switch, exception propagation,
 exit-code preservation and subsequent acquisition. The Windows `self-test`
 includes these checks alongside Credential Manager and DPAPI checks.
+
+Updated installations advertise `hd_integration` in `installation.json` as
+`{"schema": 1, "catalog_mode": "active-build-info"}`. This applies only after an
+`install` has refreshed the runtime; merely running an older installation does
+not add the capability. Compatible HD installers can update the client catalog
+without rewriting launcher source files, while retaining target/lock/recovery
+checks. Absence of the field denotes the legacy integration contract.

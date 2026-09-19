@@ -312,6 +312,7 @@ def execute(args, state, diag, parser):
             diag.mark('install_launcher')
             install_launcher(target, state)
             config = dict(tools, target=str(target), server=args.server,
+                          hd_integration={'schema': 1, 'catalog_mode': 'active-build-info'},
                           auth_port=args.auth_port, locale=args.locale,
                           hashes={**{key: sha(value) for key, value in tools.items()}, "client": sha(target / EXE)})
             diag.mark('write_installation')

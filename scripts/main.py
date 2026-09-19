@@ -205,6 +205,7 @@ def main():
             launcher = install_launcher(state, args.launcher, target / APP_REL)
             config = {
                 "build": PINS["build"],
+                "hd_integration": {"schema": 1, "catalog_mode": "active-build-info"},
                 "target": str(target),
                 "proxy": str(tools["proxy"]),
                 "locale": args.locale,
