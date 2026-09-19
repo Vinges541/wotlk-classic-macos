@@ -1,10 +1,13 @@
 """Pinned source builds; local source patches are kept reviewable in patches/."""
 
+import hashlib
 import json
 import platform
 import subprocess
 import sys
-from common import PINS, REPO, run, sha, write_json
+import tempfile
+from pathlib import Path
+from common import PINS, REPO, run, write_json
 
 PATCHES = {
     "wow-patcher": "wow-patcher-universal.patch",
@@ -18,9 +21,24 @@ def source(name, state):
     destination = state / "src" / name
     patch = REPO / "patches" / PATCHES[name] if PATCHES[name] else None
     stamp = destination / ".wrath-source.json"
-    expected = {"commit": pin["commit"], "patch_sha256": sha(patch) if patch else None}
+    # ZIPs and older Windows Git checkouts may contain CRLF despite attributes.
+    # Hash and apply the same canonical bytes on every platform.
+    patch_bytes = patch.read_bytes().replace(b"\r\n", b"\n") if patch else None
+    patch_hash = hashlib.sha256(patch_bytes).hexdigest() if patch_bytes is not None else None
+    expected = {"commit": pin["commit"], "patch_sha256": patch_hash}
     if stamp.exists():
         installed = json.loads(stamp.read_text())
+        if installed != expected and patch_bytes is not None:
+            # Migrate only a known CRLF representation of this exact patch/commit.
+            # Different source pins or patch contents still fail below.
+            crlf_hash = hashlib.sha256(patch_bytes.replace(b"\n", b"\r\n")).hexdigest()
+            if installed == {"commit": pin["commit"], "patch_sha256": crlf_hash}:
+                write_json(stamp, expected)
+                installed = expected
+                from diagnostics import ACTIVE_SETUP
+                diag = ACTIVE_SETUP.get()
+                if diag is not None:
+                    diag.emit('source_patch_line_endings_normalized', component=name)
         if installed != expected:
             raise RuntimeError(
                 f"Source pin changed for {name}: installed commit={installed.get('commit')}, "
@@ -42,9 +60,13 @@ def source(name, state):
     run(["git", "-C", destination, "config", "core.autocrlf", "false"])
     run(["git", "-C", destination, "fetch", "--depth=1", "origin", pin["commit"]])
     run(["git", "-C", destination, "checkout", "--detach", pin["commit"]])
-    if patch:
-        run(["git", "-C", destination, "apply", "--check", patch])
-        run(["git", "-C", destination, "apply", patch])
+    if patch_bytes is not None:
+        # Close the file before git opens it (required on Windows).
+        with tempfile.TemporaryDirectory(prefix="source-patch-", dir=state) as temporary:
+            normalized_patch = Path(temporary) / patch.name
+            normalized_patch.write_bytes(patch_bytes)
+            run(["git", "-C", destination, "apply", "--check", normalized_patch])
+            run(["git", "-C", destination, "apply", normalized_patch])
     write_json(stamp, expected)
     return destination
 

@@ -90,3 +90,11 @@ under the former name is reused if the new directory does not exist. Explicit
 `--state` / `WRATH_STATE` settings take precedence; use the log path printed at
 startup for existing installations. Internal credential and helper identifiers
 remain compatible, preserving saved login.
+
+
+Patch pins use LF-normalized bytes on all platforms. Older ZIP/Git checkouts
+with CRLF patches are normalized before hashing and applying, and a stored hash
+for the CRLF representation of the same patch/commit is upgraded automatically.
+This does not accept different commits or patch contents. A line-ending-only
+`Source pin changed` failure can be retried after updating the launcher using
+the existing state; no client download or state deletion is needed for this fix.

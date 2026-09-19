@@ -43,5 +43,7 @@ jobs:
         run: ./.state/venv/Scripts/python.exe -m unittest discover -s tests -p test_paths.py -v
       - name: Setup diagnostics and failure capture
         run: ./.state/venv/Scripts/python.exe -m unittest discover -s tests -p test_diagnostics.py -v
+      - name: Cross-platform patch identity
+        run: ./.state/venv/Scripts/python.exe -m unittest discover -s tests -p test_source_pins.py -v
       - name: Native Credential Manager and DPAPI checks
         run: ./.state/components/login/WrathLogin.exe self-test
