@@ -152,8 +152,14 @@ def launch(state, config, diagnostics=None):
             raise RuntimeError('A bridge port is occupied; close the other bridge first')
         # Keep the portal on the local bridge even after a client rewrites its WTF.
         configure(target, state, config['server'], config['auth_port'])
-        from metadata_server import Handler, ThreadingHTTPServer
+        from metadata_server import Handler, ThreadingHTTPServer, bind_catalog
         server = ThreadingHTTPServer(('127.0.0.1', 8090), Handler)
+        try:
+            catalog = bind_catalog(server, target)
+        except BaseException:
+            server.server_close()
+            raise
+        diag.emit('active_catalog', build_config=catalog['build_key'], kind=catalog['kind'])
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
         diag.emit('portal_configured', portal='127.0.0.1', certificate='bundled')

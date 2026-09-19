@@ -1,5 +1,6 @@
 """Read-only CASC integrity and cross-manifest selection audit."""
 
+import hashlib
 import json
 import logging
 import urllib.request
@@ -57,20 +58,54 @@ def manifest(kind, state, store):
     return decompress_blte(data)
 
 
+def verify_hd_references(catalog, store):
+    """Check active encoding/root and modified VFS objects against local CASC."""
+    from cascette_tools.formats.encoding import EncodingParser
+    active = catalog['active']
+    verified = set()
+
+    def content(ckey, ekey, sizes=None):
+        ck, ek = bytes.fromhex(ckey), bytes.fromhex(ekey)
+        if ek not in store.full_keys:
+            raise ValueError('HD metadata object missing from local CASC: ' + ekey)
+        entry = store.find_entry(ek)
+        if entry is None:
+            raise ValueError('HD metadata object missing from index: ' + ekey)
+        blob = store.read_content(entry)
+        verify_blob(blob, ek)
+        data = decompress_blte(blob)
+        if hashlib.md5(data).digest() != ck:
+            raise ValueError('HD metadata content checksum mismatch: ' + ckey)
+        if sizes is not None and (len(data), len(blob)) != tuple(map(int, sizes.split())):
+            raise ValueError('HD metadata size mismatch: ' + ekey)
+        verified.add(ekey)
+        return data
+
+    encoding = content(*active['encoding'].split(), active['encoding-size'])
+    parser = EncodingParser()
+    parsed = parser.parse(encoding)
+    root_key = bytes.fromhex(active['root'])
+    root_encodings = parser.find_content_key_sequential(encoding, parsed, root_key) or []
+    resident = [key for key in root_encodings if key in store.full_keys]
+    if not resident:
+        raise ValueError('HD root is not resident in the active encoding table/local CASC')
+    content(active['root'], resident[0].hex())
+    vfs_names = {name.removesuffix('-size') for name in catalog['changed'] if name.startswith('vfs-')}
+    for name in sorted(vfs_names):
+        ck, ek = active[name].split()
+        content(ck, ek, active[name + '-size'])
+    return len(verified)
+
+
 def audit(target, state, locale, platform="OSX", arch="x86_64"):
     if (target / "Data/.install_state.json").exists():
         raise RuntimeError("Incomplete CASC install")
-    build_info = (target / ".build.info").read_text()
-    if PINS["build_config"] not in build_info or PINS["cdn_config"] not in build_info:
-        raise ValueError(
-            "CASC build does not match 3.4.3.54261: .build.info must contain "
-            f"BuildConfig={PINS['build_config']} and CDNConfig={PINS['cdn_config']}. "
-            "Use the stock pinned client catalog; modified/HD catalogs are not supported "
-            "by this audit. Do not bypass this check."
-        )
+    from catalog import validate_catalog
+    catalog = validate_catalog(target)
     store = RecoveredStorage(target)
     store.full_keys = set()
     store._scan()  # Deliberately do not call initialize(), which may repair files.
+    hd_references = verify_hd_references(catalog, store) if catalog['kind'] == 'hd-derived' else 0
     dl = DownloadParser().parse(manifest("download", state, store))
     ds = SizeParser().parse(manifest("size", state, store))
     selected = filter_entries_by_tags(
@@ -117,6 +152,9 @@ def audit(target, state, locale, platform="OSX", arch="x86_64"):
         raise RuntimeError("CASC indices disagree with verified segment contents")
     report = {
         "build": PINS["build"],
+        "build_config": catalog["build_key"],
+        "catalog_kind": catalog["kind"],
+        "hd_references_verified": hd_references,
         "selected_files": len(selected),
         "stored_objects_verified": len(store.full_keys),
         "index_entries_verified": len(actual),

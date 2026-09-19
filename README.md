@@ -41,7 +41,7 @@ Setup installs missing tools into its private state directory. Allow **30 GiB** 
 ./setup.sh forget-account
 ```
 
-Use `--target DIRECTORY` for another client location and `--state DIRECTORY` for separate bridge state. Keep supplying the same state on later commands. `--adopt` uses an existing stock client; an already patched Mac client additionally requires `--original-executable FILE`.
+Use `--target DIRECTORY` for another client location and `--state DIRECTORY` for separate bridge state. Keep supplying the same state on later commands. `--adopt` uses an existing stock client or a verified additive HD catalog; an already patched Mac client additionally requires `--original-executable FILE`.
 
 Existing macOS launcher identifiers, Keychain entries and installation paths remain compatible with the previous `wotlk-classic-macos` name.
 
@@ -55,7 +55,7 @@ Requires **Python 3.13+**, **Git** and **.NET SDK 10+** on PATH. From PowerShell
 .\setup.ps1 run
 ```
 
-Use `--adopt --target "D:\Games\WotLK Classic"` to patch an existing stock **Windows x64 54261** client. Close WoW before installation. The installer creates **Play WotLK Classic.lnk** in the client directory. State defaults to `%LOCALAPPDATA%\WoTLK Classic Bridge`.
+Use `--adopt --target "D:\Games\WotLK Classic"` for an existing **Windows x64 54261** client, including a verified additive HD catalog. Close WoW before installation. The installer creates **Play WotLK Classic.lnk** in the client directory. State defaults to `%LOCALAPPDATA%\WoTLK Classic Bridge`.
 
 The Windows path uses a build-specific data patcher and our small .NET login helper, with no Arctium dependency. The helper saves the password in **Windows Credential Manager**, obtains a new Hermes ticket on each launch, and supplies a DPAPI-encrypted ticket through a separate launcher registry key. `forget-account` removes the saved password.
 
@@ -67,7 +67,7 @@ The launcher starts the bridge and local metadata service before opening WoW, th
 
 On macOS, automatic login uses a process-local TLS and ticket helper. On Windows, the current probe keeps client code unchanged and uses Hermes' bundled certificate. Neither setup adds a system root certificate.
 
-The repository contains source and configuration templates. Client data is downloaded from historical CASC mirrors; availability depends on those mirrors. HD assets are managed separately by [wotlk-classic-hd](https://github.com/Vinges541/wotlk-classic-hd).
+The repository contains source and configuration templates. Client data is downloaded from historical CASC mirrors; availability depends on those mirrors. HD assets are managed separately by [wotlk-classic-hd](https://github.com/Vinges541/wotlk-classic-hd). The launcher preserves compatible HD catalogs and advertises their active BuildConfig; see [HD validation](docs/WINDOWS.md#existing-hd-installations).
 
 ## Development
 

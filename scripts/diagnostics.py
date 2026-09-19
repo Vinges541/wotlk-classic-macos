@@ -136,6 +136,14 @@ class Diagnostics:
                   expected_cdn_config=PINS['cdn_config'],
                   build_config_matches=PINS['build_config'] in text,
                   cdn_config_matches=PINS['cdn_config'] in text)
+        from catalog import validate_catalog
+        try:
+            catalog = validate_catalog(target)
+        except (OSError, ValueError) as error:
+            self.emit('catalog_validation', accepted=False, error_type=type(error).__name__)
+        else:
+            self.emit('catalog_validation', accepted=True, build_config=catalog['build_key'],
+                      kind=catalog['kind'])
 
     def consume(self, stream, source):
         # Map known messages to fixed events; no raw lines, even on errors.

@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from common import checked_path, game_processes, lock, port_open, sha, write_json
 from client import APP_REL, EXE_REL, update_wtf
-from metadata_server import Handler, ThreadingHTTPServer
+from metadata_server import Handler, ThreadingHTTPServer, bind_catalog
 import login
 
 PORTS = (1119, 8081, 8084, 8086, 8090)
@@ -147,6 +147,7 @@ def launch(state, config):
             )
         server = ThreadingHTTPServer(("127.0.0.1", 8090), Handler)
         stack.callback(server.server_close)
+        bind_catalog(server, target)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         stack.callback(server.shutdown)
         env = dict(

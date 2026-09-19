@@ -45,5 +45,10 @@ jobs:
         run: ./.state/venv/Scripts/python.exe -m unittest discover -s tests -p test_diagnostics.py -v
       - name: Cross-platform patch identity
         run: ./.state/venv/Scripts/python.exe -m unittest discover -s tests -p test_source_pins.py -v
+      - name: HD catalog and CASC reference validation
+        run: |
+          ./.state/venv/Scripts/python.exe -m unittest discover -s tests -p test_catalog.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./.state/venv/Scripts/python.exe -m unittest discover -s tests -p test_hd_audit.py -v
       - name: Native Credential Manager and DPAPI checks
         run: ./.state/components/login/WrathLogin.exe self-test

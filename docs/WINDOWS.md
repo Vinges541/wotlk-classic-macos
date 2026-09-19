@@ -29,7 +29,7 @@ The helper's pinned HTTPS verification secures its own REST request; it does not
 
 ## Test sequence
 
-1. Use a stock Windows x64 54261 client, or let the installer restore one. `--adopt` preserves WTF/account settings, but expects the stock build catalog and executable on first installation. Modified HD catalogs are not yet supported by the install audit.
+1. Use a stock Windows x64 54261 client, or let the installer restore one. `--adopt` preserves WTF/account settings and accepts stock or verified additive HD catalogs (see below). The original pinned executable is still required on first installation.
 2. Run `setup.ps1 install --experimental --server HOST --no-launch` and `setup.ps1 check`.
 3. Run `setup.ps1 run` without a saved account. Check character selection and world entry using manual login first.
 4. Exit, run `setup.ps1 remember-account`, then `setup.ps1 run`. Confirm automatic account login.
@@ -45,7 +45,7 @@ After updating the source, repeat the original
 state/target (and `--adopt` if applicable). Installation rebuilds the login helper
 and records its new hash. `prepare` alone leaves the installed hash outdated. Do not remove the CASC or executable checks to finish an installation.
 A missing `installation.json` means installation has not completed in that state;
-a catalog mismatch means `.build.info` does not contain the pinned build/CDN keys.
+a catalog mismatch means the active catalog does not pass the pinned base/HD checks.
 
 ```powershell
 .\setup.ps1 run --verbose
@@ -98,3 +98,27 @@ for the CRLF representation of the same patch/commit is upgraded automatically.
 This does not accept different commits or patch contents. A line-ending-only
 `Source pin changed` failure can be retried after updating the launcher using
 the existing state; no client download or state deletion is needed for this fix.
+
+
+## Existing HD installations
+
+Use `--adopt` with the existing target/state. Additive catalogs produced by
+[wotlk-classic-hd](https://github.com/Vinges541/wotlk-classic-hd) are accepted when
+the original pinned build config is retained locally, both config hashes verify,
+and the active catalog still identifies build 54261 with the pinned CDN. Only
+root, encoding and VFS pointers/sizes may differ from that exact original config;
+install/download/size manifests and all other fields must remain unchanged.
+An interrupted HD transaction is rejected until recovered with the HD installer.
+
+The audit continues to require the original selected download objects, validates
+local segment contents and indices, and additionally checks the active HD
+encoding table, root and changed VFS metadata objects (presence, content and
+encoding hashes, and declared sizes). This verifies storage/metadata integrity,
+not visual correctness or Windows gameplay. No HD project checkout is required.
+
+At launch the loopback metadata server reads the validated active catalog rather
+than advertising the stock BuildConfig. Its `/versions` response and local config
+endpoint agree with that catalog. Reinstalling the launcher preserves HD files
+and does not rewrite `.build.info`. The existing verbose command needs no new
+flag; `catalog_validation` / `active_catalog` identify the accepted catalog and
+`casc-audit.json` records the verified HD references.

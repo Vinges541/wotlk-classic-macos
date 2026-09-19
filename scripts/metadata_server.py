@@ -32,6 +32,15 @@ CACHE = Path(os.environ["WRATH_STATE"]) / "cache/casc/cdn"
 ACTIVITY = {"data_requests": 0, "data_failures": 0}
 
 
+def bind_catalog(server, target):
+    from catalog import validate_catalog
+    catalog = validate_catalog(target)
+    server.build_key = catalog['build_key']
+    server.build_config = catalog['config']
+    server.versions = VERSIONS.replace(BUILD, server.build_key)
+    return catalog
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlsplit(self.path).path
@@ -39,7 +48,7 @@ class Handler(BaseHTTPRequestHandler):
             self.serve_cdn(path)
             return
         content = {
-            "/versions": VERSIONS,
+            "/versions": getattr(self.server, "versions", VERSIONS),
             "/cdns": CDNS,
             "/health": json.dumps(
                 {"build": "3.4.3.54261", "product": "wow_classic", **ACTIVITY}
@@ -63,6 +72,17 @@ class Handler(BaseHTTPRequestHandler):
         )
         if not match or match[2] + match[3] != match[4][:4]:
             self.send_error(404)
+            return
+        # The active HD config is local and cannot be fetched from stock mirrors.
+        if (match[1] == 'config' and not match[5]
+                and match[4] == getattr(self.server, 'build_key', None)):
+            body = self.server.build_config
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/octet-stream')
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(body)
             return
         requested_range = self.headers.get("Range")
         if requested_range and not re.fullmatch(
