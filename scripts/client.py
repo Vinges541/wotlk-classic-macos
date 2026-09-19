@@ -28,14 +28,15 @@ def update_wtf(text, settings):
     return text.lstrip("\n")
 
 
-def download_client(target, state, locale):
+def download_client(target, state, locale, platform="OSX", arch="x86_64"):
+    executable = EXE_REL if platform == "OSX" else Path("_classic_/WowClassic.exe")
     for relative in (
         "Data",
         "Data/data",
         "Data/config",
         "Data/indices",
         "_classic_",
-        str(EXE_REL),
+        str(executable),
     ):
         checked_path(target / relative)
     if (
@@ -80,9 +81,9 @@ def download_client(target, state, locale):
             "--product",
             "wow_classic",
             "--platform",
-            "OSX",
+            platform,
             "--arch",
-            "x86_64",
+            arch,
             "--locale",
             locale,
             "--region",

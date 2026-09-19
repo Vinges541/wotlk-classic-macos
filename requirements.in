@@ -8,3 +8,5 @@ lz4>=4.4.0
 pycryptodome>=3.23.0
 protobuf>=5.0.0
 hatchling==1.27.0
+
+colorama==0.4.6 ; sys_platform == "win32"

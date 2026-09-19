@@ -33,6 +33,7 @@ def source(name, state):
         run(["git", "init", str(destination)])
         (destination / ".git/wrath-owned").touch()
         run(["git", "-C", destination, "remote", "add", "origin", pin["url"]])
+    run(["git", "-C", destination, "config", "core.autocrlf", "false"])
     run(["git", "-C", destination, "fetch", "--depth=1", "origin", pin["commit"]])
     run(["git", "-C", destination, "checkout", "--detach", pin["commit"]])
     if patch:

@@ -1,7 +1,6 @@
 """Filesystem and process guards shared by setup and launch."""
 
 import contextlib
-import fcntl
 import hashlib
 import json
 import os
@@ -39,6 +38,13 @@ def checked_path(path):
 
 
 def game_processes():
+    if os.name == "nt":
+        import csv
+        rows = csv.reader(subprocess.check_output(
+            ["tasklist", "/FO", "CSV", "/NH"], text=True
+        ).splitlines())
+        return [(int(row[1]), row[0]) for row in rows
+                if row and row[0].lower() in ("wow.exe", "wowclassic.exe")]
     result = []
     for line in subprocess.check_output(
         ["ps", "-axo", "pid=,comm="], text=True
@@ -62,9 +68,17 @@ def game_closed():
 
 @contextlib.contextmanager
 def lock(path):
-    fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    fd = os.open(path, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if os.name == "nt":
+            import msvcrt
+            if os.fstat(fd).st_size == 0:
+                os.write(fd, b"0")
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         yield
     finally:
         os.close(fd)

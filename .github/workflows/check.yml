@@ -24,3 +24,20 @@ jobs:
           cargo test --locked --manifest-path "$WRATH_STATE/src/wow-patcher/Cargo.toml"
           cargo fmt --manifest-path tls/Cargo.toml -- --check
           cargo clippy --manifest-path tls/Cargo.toml -- -D warnings
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build pinned Windows components
+        run: ./setup.ps1 prepare --state "${{ github.workspace }}/.state"
+      - name: PE guards and bridge failure handling
+        run: ./.state/venv/Scripts/python.exe -m unittest discover -s tests -p test_windows.py -v
+      - name: Native Credential Manager and DPAPI checks
+        run: ./.state/components/login/WrathLogin.exe self-test

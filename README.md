@@ -1,125 +1,83 @@
-# WotLK Classic on macOS
+# WotLK Classic HermesProxy Launcher
 
-Run the **native World of Warcraft Wrath Classic 3.4.3.54261** client with **Metal** against an existing **AzerothCore 3.3.5a / build 12340** server through a local HermesProxy.
+Run **Wrath Classic 3.4.3.54261** against an existing **AzerothCore 3.3.5a / build 12340** server. The launcher installs the pinned client and starts its local HermesProxy bridge.
 
-This is an experimental client and protocol bridge, not a renderer transplant. It does not add Vulkan or DirectX to macOS, modify the server, or make every Classic feature compatible with a 3.3.5a server.
+| Platform | Status |
+|---|---|
+| macOS Apple Silicon | Login, character selection and world entry tested |
+| macOS Intel | Build path available; gameplay not tested on Intel hardware |
+| Windows x64 | Experimental source implementation; client TLS and automatic login need a Windows gameplay test |
+| Windows ARM64 | Deferred |
 
-## One-command setup
+## macOS
 
-Download or clone this repository, open Terminal in it, then run:
+Install Apple Command Line Tools (`xcode-select --install`), then run:
 
 ```sh
 ./setup.sh install --server YOUR_SERVER_ADDRESS
-```
-
-The script:
-
-1. Installs missing Python, Rust and .NET tools into a private state directory; no `sudo` or Homebrew changes.
-2. Fetches exact upstream commits, applies the included reviewed patches and builds the tools.
-3. Restores the pinned Mac client from historical CASC mirrors, resuming interrupted transfers.
-4. Checks the selected content, CASC indices, original executable hash and Mach-O sections.
-5. Patches connection data in both native architectures and preserves executable code sections.
-6. Generates a unique local TLS certificate, installs the process-local trust helper and signs the app locally.
-7. Creates **World of Warcraft Classic.app** in your user's Applications folder and starts the game with its bridge.
-
-Enter your existing server account in the game, or enable automatic login below. The installer does not ask for a game password.
-
-### Requirements
-
-- macOS with Apple Command Line Tools installed: `xcode-select --install`.
-- At least **22 GiB free**, plus space for source builds and toolchains. Allow **30 GiB** for a fresh setup.
-- Internet access to GitHub, NuGet, Rust/Python distribution servers and the configured historical CASC mirrors.
-- A running compatible 3.3.5a server with auth and world ports reachable from your Mac.
-- Close other WoW clients during installation and before starting this client.
-
-Apple Silicon is the locally tested architecture. Intel builds are supported by the scripts but have not been tested on an Intel Mac. Apple's Command Line Tools installation and license acceptance remain manual prerequisites.
-
-The historical game files are fetched from external mirrors; their future availability cannot be guaranteed. No game client, Blizzard asset archive, account data or server credentials are included in this repository.
-
-## Paths and options
-
-| Item | Default |
-|---|---|
-| Client data | `~/Games/WotLK Classic` |
-| Tools, local certificate, settings | `~/Library/Application Support/Wrath Classic Bridge` |
-| Launcher | `~/Applications/World of Warcraft Classic.app` |
-| Text/audio locale | `ruRU` |
-| Auth port | `3724` |
-
-```sh
-./setup.sh install --server server.example --auth-port 3724 --locale enUS
-./setup.sh install --server server.example --target "/Volumes/Games/WotLK Classic"
-./setup.sh install --server server.example --launcher "/Applications/World of Warcraft Classic.app"
-./setup.sh install --server server.example --no-launch
-./setup.sh run
-./setup.sh check
-./setup.sh audit
-```
-
-`--state DIRECTORY` selects a separate setup state and must be supplied consistently. `prepare` builds only the pinned tools. `--adopt --target DIRECTORY` uses an existing **unmodified** Mac 54261 installation instead of downloading it. An already patched client requires `--original-executable FILE`: the original must match the pinned SHA-256, and every section of the installed client must match the expected patch.
-
-The launcher starts Hermes and the pinned metadata service automatically, keeps them alive while the client runs, and stops its own services when the client exits. It refuses occupied ports rather than terminating another service. It does not install a login item or background system service. Move neither the private state directory nor the client directory after installation; rerun setup with the intended paths instead.
-
-Open **World of Warcraft Classic.app** to play. It waits for the local services before opening the game. If the native client was opened directly and is waiting to connect, opening the launcher starts its missing bridge and attaches to that client. When both are already running, it reuses the existing session. The launcher uses the installed client's icon.
-
-## Automatic account login
-
-After setup, run this once from Terminal:
-
-```sh
 ./setup.sh remember-account
 ```
 
-Enter the account and password for your configured private server. The password is hidden while typing and saved in the macOS login Keychain, scoped to that server address and port. Use the same `--state` as installation if you changed it. macOS may ask to allow the setup's Python interpreter to access its saved Keychain item.
+Open **World of Warcraft Classic.app** to play. The optional second command saves your server account in the macOS login Keychain and enables automatic login.
 
-The next time you open **World of Warcraft Classic.app**, it starts the bridge, obtains a fresh login ticket and logs into the account. Character selection remains yours. Opening the app again while the game is running reuses that session; it does not authenticate a second time. A directly opened native client keeps its current login screen.
+Setup installs missing tools into its private state directory. Allow **30 GiB** for the client, tools and builds.
 
-To return to manual login:
+| Item | Default |
+|---|---|
+| Client | `~/Games/WotLK Classic` |
+| State | `~/Library/Application Support/Wrath Classic Bridge` |
+| Launcher | `~/Applications/World of Warcraft Classic.app` |
+| Language | `ruRU` (also supports `enUS`) |
+| Server auth port | `3724` |
 
 ```sh
+./setup.sh install --server server.example --locale enUS --no-launch
+./setup.sh install --server server.example --launcher "/Applications/World of Warcraft Classic.app"
+./setup.sh run
+./setup.sh check
+./setup.sh audit
 ./setup.sh forget-account
 ```
 
-If the saved account cannot be read or the server rejects it, the launcher opens the ordinary login form. After a disconnect, close the game and reopen the launcher to obtain a fresh ticket. Passwords and tickets are never passed in command-line arguments or environment variables. See [the login design](docs/LOGIN.md).
+Use `--target DIRECTORY` for another client location and `--state DIRECTORY` for separate bridge state. Keep supplying the same state on later commands. `--adopt` uses an existing stock client; an already patched Mac client additionally requires `--original-executable FILE`.
 
-## Pinned sources
+Existing macOS launcher identifiers, Keychain entries and installation paths remain compatible with the previous `wotlk-classic-macos` name.
 
-Exact commits and archive checksums are in [`pins.json`](pins.json).
+## Windows x64 — test build
 
-- [Vinges541/HermesProxy, `launcher-login` branch](https://github.com/Vinges541/HermesProxy/tree/launcher-login): fork synchronized with Xian55/HermesProxy v4.5.5, preserving declined-name flags and supporting launcher login tickets. The exact commit and build version are pinned in `pins.json`.
-- [wowemulation-dev/wow-patcher](https://github.com/wowemulation-dev/wow-patcher): universal Mach-O support in [`patches/wow-patcher-universal.patch`](patches/wow-patcher-universal.patch).
-- [wowemulation-dev/cascette-py](https://github.com/wowemulation-dev/cascette-py): corrected cross-manifest selection and CASC index capacity in [`patches/cascette-macos.patch`](patches/cascette-macos.patch).
-- [`tls/`](tls/): Rust process-local exact-leaf trust and launcher ticket helper.
+Requires **Python 3.13+**, **Git** and **.NET SDK 10+** on PATH. From PowerShell in this repository:
 
-Dependencies are built from source. This project does not depend on the author's workstation, compiled artifacts or private paths.
+```powershell
+.\setup.ps1 install --experimental --server YOUR_SERVER_ADDRESS --no-launch
+.\setup.ps1 remember-account
+.\setup.ps1 run
+```
 
-## Validation and known limits
+Use `--adopt --target "D:\Games\WotLK Classic"` to patch an existing stock **Windows x64 54261** client. Close WoW before installation. The installer creates **Play WotLK Classic.lnk** in the client directory. State defaults to `%LOCALAPPDATA%\Wrath Classic Bridge`.
 
-Native ARM64 startup, Metal rendering, BNet/REST authentication and the character list have been verified on an Apple M3 Pro. After the declined-name flag correction, the tester confirmed successful world entry and character control with the ruRU client; a supplied screenshot shows the character inside Acherus. The existing character-list tests also pass. See [`docs/VALIDATION.md`](docs/VALIDATION.md) for the full validation scope.
+The Windows path uses a build-specific data patcher and our small .NET login helper, with no Arctium dependency. The helper saves the password in **Windows Credential Manager**, obtains a new Hermes ticket on each launch, and supplies a DPAPI-encrypted ticket through a separate launcher registry key. `forget-account` removes the saved password.
 
-For Russian names, upstream Hermes v4.5.3 clears a flag meaning “declined names exist or are not required.” This makes the client request name cases even when the backend disabled them. Our fork preserves that flag. It does **not** implement the full declined-name editing protocol for servers that actually require it.
+This path is ready for a controlled Windows test, **not yet verified for gameplay**. In particular, the stock client's certificate acceptance, auth seed and reading of the generated login ticket still need validation. Details and the test sequence: [Windows implementation](docs/WINDOWS.md).
 
-The old Metal client has produced early startup crashes on some attempts; their root cause is not established. Long gameplay sessions, raids, all server modules, Intel hardware and a clean install on another Mac have not been validated. Modern content and protocol differences remain subject to HermesProxy's support.
+## How launch works
 
-## Security and troubleshooting
+The launcher starts the bridge and local metadata service before opening WoW, then stops its services when the game exits. It refuses occupied ports. Services use loopback ports **1119, 8081, 8084, 8086 and 8090**. Raw authentication and packet output is not saved.
 
-- All bridge services bind to `127.0.0.1`: ports **1119, 8081, 8084, 8086 and 8090**.
-- The portal must be **`localhost.`**, including the trailing dot. Bare `localhost` is interpreted by the client as a Battle.net region.
-- A unique certificate is generated for each installation. The helper only accepts an exact DER leaf match and then asks Security.framework to check validity and hostname. Unrelated certificates and wrong hostnames still fail.
-- No root certificate or system trust exception is installed. The native app gets `LSEnvironment` entries and an ad-hoc signature.
-- Raw proxy output, packets, passwords and session tickets are not written to logs. `connection-status.json` contains only fixed counters. `launcher.log` contains setup/launcher errors.
-- TLS certificate lifecycle: [`docs/TLS.md`](docs/TLS.md).
-- Keep server-side modules and gameplay testing separate from successful client authentication.
+On macOS, automatic login uses a process-local TLS and ticket helper. On Windows, the current probe keeps client code unchanged and uses Hermes' bundled certificate. Neither setup adds a system root certificate.
+
+The repository contains source and configuration templates. Client data is downloaded from historical CASC mirrors; availability depends on those mirrors. HD assets are managed separately by [wotlk-classic-hd](https://github.com/Vinges541/wotlk-classic-hd).
 
 ## Development
+
+Exact upstream commits and tool checksums are in [pins.json](pins.json). Components are built from [HermesProxy](https://github.com/Vinges541/HermesProxy), [wow-patcher](https://github.com/wowemulation-dev/wow-patcher), [cascette-py](https://github.com/wowemulation-dev/cascette-py), and this repository's helpers.
 
 ```sh
 ./setup.sh prepare --state "$PWD/.state"
 PYTHONPATH=scripts .state/venv/bin/python -m unittest discover -s tests
-cargo fmt --manifest-path tls/Cargo.toml -- --check
-cargo clippy --manifest-path tls/Cargo.toml -- -D warnings
 ```
 
-The Python suite uses the patched cascette package installed by `prepare`. The TLS helper builds only on macOS. CI checks Python behavior and both architecture patch inputs through the source patches; no proprietary game data is uploaded to CI.
+On Windows, `setup.ps1 prepare` builds the pinned dependencies and helper without installing or launching the game.
 
-License: GPL-3.0. Upstream patch context retains its original licensing; see [`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md).
+[Login design](docs/LOGIN.md) · [macOS TLS](docs/TLS.md) · [Validation](docs/VALIDATION.md) · [Third-party licenses](docs/THIRD_PARTY.md)
+
+License: GPL-3.0.

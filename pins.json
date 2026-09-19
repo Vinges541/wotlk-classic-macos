@@ -44,5 +44,6 @@
       "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.100/dotnet-sdk-10.0.100-osx-x64.tar.gz",
       "sha512": "595c3c661a705a256f52e03e3aeeb86753ad6f9aa3d59f487304cdbbb744a39f4e3fa6445a60cded6bc78e12f51d52ed5a183ea70a0560b96bed61fb83958f81"
     }
-  }
+  },
+  "windows_x64_executable_sha256": "e240f9d88445643d2545ac54b3c3874b2f86336bc8947256584ef07bb5fd66a7"
 }

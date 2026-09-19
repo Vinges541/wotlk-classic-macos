@@ -57,7 +57,7 @@ def manifest(kind, state, store):
     return decompress_blte(data)
 
 
-def audit(target, state, locale):
+def audit(target, state, locale, platform="OSX", arch="x86_64"):
     if (target / "Data/.install_state.json").exists():
         raise RuntimeError("Incomplete CASC install")
     build_info = (target / ".build.info").read_text()
@@ -71,14 +71,14 @@ def audit(target, state, locale):
     selected = filter_entries_by_tags(
         dl.entries,
         dl.tags,
-        platform="OSX",
-        arch="x86_64",
+        platform=platform,
+        arch=arch,
         locale=locale,
         size_tags=ds.tags,
         size_entries=ds.entries,
     )
     alternate = filter_entries_by_tags(
-        dl.entries, dl.tags, platform="OSX", arch="x86_64", locale=locale
+        dl.entries, dl.tags, platform=platform, arch=arch, locale=locale
     )
     if not selected or {e.ekey for e in selected} != {e.ekey for e in alternate}:
         raise RuntimeError("Download/size tag selections disagree")
