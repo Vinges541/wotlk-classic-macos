@@ -82,13 +82,16 @@ def proxy_profile(server, port, state):
     return value
 
 
-def configure(target, state, server, port):
+def configure(target, state, server, port, verbose=False):
     from client import update_wtf
     config = checked_path(target / '_classic_/WTF/Config.wtf')
     config.parent.mkdir(parents=True, exist_ok=True)
     text = config.read_text(encoding='utf-8') if config.exists() else ''
     config.write_text(update_wtf(text, {'portal': '127.0.0.1'}), encoding='utf-8')
-    write_json(state / 'hermes.json', proxy_profile(server, port, state))
+    profile = proxy_profile(server, port, state)
+    if verbose:
+        profile['LoggingOptions'].update(MinimumLevel='Debug', NetworkLevel='Debug', ConsoleLevel='Debug')
+    write_json(state / 'hermes.json', profile)
 
 
 def install_launcher(target, state):
@@ -151,7 +154,7 @@ def launch(state, config, diagnostics=None):
         if any(port_open(port) for port in PORTS):
             raise RuntimeError('A bridge port is occupied; close the other bridge first')
         # Keep the portal on the local bridge even after a client rewrites its WTF.
-        configure(target, state, config['server'], config['auth_port'])
+        configure(target, state, config['server'], config['auth_port'], verbose=diag.enabled)
         from metadata_server import Handler, ThreadingHTTPServer, bind_catalog
         server = ThreadingHTTPServer(('127.0.0.1', 8090), Handler)
         try:
@@ -192,7 +195,11 @@ def launch(state, config, diagnostics=None):
                                         stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
             capture(launcher, 'helper')
             diag.emit('helper_started', pid=launcher.pid)
+            next_connection_check = 0.0
             while launcher.poll() is None:
+                if diag.enabled and time.monotonic() >= next_connection_check:
+                    diag.client_connections()
+                    next_connection_check = time.monotonic() + 3
                 if proxy.poll() is not None:
                     raise RuntimeError('HermesProxy stopped; close the game and restart the launcher')
                 time.sleep(.5)

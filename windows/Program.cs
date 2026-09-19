@@ -15,9 +15,17 @@ void Trace(string name, long value)
     if (verbose) Console.WriteLine($"WRATH_DIAG {name} {value}");
 }
 
+if (args.Length == 1 && args[0] == "self-test-lock")
+{
+    SingleInstance.SelfTest();
+    Console.WriteLine("Async single-instance lock checks passed.");
+    return 0;
+}
+
 if (args.Length == 1 && args[0] == "self-test")
 {
     if (!OperatingSystem.IsWindows()) return 2;
+    SingleInstance.SelfTest();
     Credentials.SelfTest();
     Console.WriteLine("Windows Credential Manager and DPAPI round trips passed.");
     return 0;
@@ -69,12 +77,9 @@ try
         Console.WriteLine("Saved account removed.");
         return 0;
     }
-    using var mutex = new Mutex(false, @"Local\WotLKClassicHermesLauncher");
-    bool acquired;
-    try { acquired = mutex.WaitOne(0); } catch (AbandonedMutexException) { acquired = true; }
-    if (!acquired) throw new InvalidOperationException("Another launcher is running.");
-    try
+    return SingleInstance.Run(@"Local\WotLKClassicHermesLauncher", async () =>
     {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
         var executable = Path.Combine(root.GetProperty("target").GetString()!, "_classic_", "WowClassic.exe");
         if (Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(executable))).ToLowerInvariant() != root.GetProperty("hashes").GetProperty("client").GetString())
             throw new InvalidOperationException("Client hash mismatch.");
@@ -142,8 +147,7 @@ try
             return game.ExitCode;
         }
         finally { ClearTicket(); }
-    }
-    finally { mutex.ReleaseMutex(); }
+    });
 }
 catch (Exception error)
 {

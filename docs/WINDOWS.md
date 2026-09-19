@@ -122,3 +122,17 @@ endpoint agree with that catalog. Reinstalling the launcher preserves HD files
 and does not rewrite `.build.info`. The existing verbose command needs no new
 flag; `catalog_validation` / `active_catalog` identify the accepted catalog and
 `casc-audit.json` records the verified HD references.
+
+Verbose launch also records changes in the game's own TCP connections (owning
+PID selected from the helper, connection state and ports; remote IPs and other
+processes are excluded) and allowlisted BNet connection/RPC events. Network debug
+output is filtered in memory; packet/file logs remain disabled. TCP readiness
+probes may generate TLS failures before the game starts, so those events alone
+do not establish a client certificate rejection. A successful helper REST login
+likewise does not establish that the game's BNet connection completed.
+
+The helper keeps the named mutex acquisition and release on the same synchronous
+entry thread while awaiting login/process work internally. Its `self-test-lock`
+command checks exclusion across an async thread switch, exception propagation,
+exit-code preservation and subsequent acquisition. The Windows `self-test`
+includes these checks alongside Credential Manager and DPAPI checks.

@@ -131,3 +131,45 @@ class SetupDiagnosticsTests(unittest.TestCase):
             with patch.object(build_tools, 'run') as run:
                 self.assertEqual(build_tools.source('wow-patcher', state), destination)
                 run.assert_not_called()
+
+
+class ClientConnectionTests(unittest.TestCase):
+    def test_only_client_states_and_ports_are_retained(self):
+        from diagnostics import parse_client_connections
+        output = '''Active Connections
+  TCP    127.0.0.1:50000     127.0.0.1:1119      ESTABLISHED     123
+  TCP    [::1]:50001        [::1]:8081          SYN_SENT        123
+  TCP    192.0.2.10:50002   198.51.100.20:443   SYN_SENT        123
+  TCP    127.0.0.1:50003    127.0.0.1:9999      ESTABLISHED     456
+  UDP    0.0.0.0:1234       *:*                                 123
+'''
+        result = parse_client_connections(output, 123)
+        self.assertEqual(len(result), 3)
+        self.assertEqual([r['remote_loopback'] for r in result], [True, True, False])
+        self.assertEqual(result[0]['remote_port'], 1119)
+        self.assertEqual(result[1]['state'], 'SYN_SENT')
+        self.assertNotIn('198.51.100.20', json.dumps(result))
+        self.assertNotIn('9999', json.dumps(result))
+
+    def test_helper_pid_and_bnet_events_do_not_retain_raw_lines(self):
+        with tempfile.TemporaryDirectory() as tmp, patch('builtins.print'):
+            diag = Diagnostics(Path(tmp), True)
+            diag.consume(io.StringIO('WRATH_DIAG client_pid 123\n'), 'helper')
+            self.assertEqual(diag.client_pid, 123)
+            diag.consume(io.StringIO('Accepting connection from PRIVATE.\n'
+                                     'Client requested service PRIVATE/m:7\n'), 'hermes')
+            self.assertEqual(diag.counts['connection_accepted'], 1)
+            self.assertEqual(diag.counts['bnet_service_request'], 1)
+            self.assertNotIn('PRIVATE', diag.path.read_text())
+
+    def test_verbose_network_profile_keeps_packet_and_file_logs_disabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp).resolve()
+            windows.configure(state / 'client', state, 'example.test', 3724, verbose=True)
+            profile = json.loads((state / 'hermes.json').read_text())
+            self.assertEqual(profile['LoggingOptions']['NetworkLevel'], 'Debug')
+            self.assertFalse(profile['LoggingOptions']['ToFile'])
+            self.assertFalse(profile['DiagnosticsOptions']['PacketsLog'])
+            windows.configure(state / 'client', state, 'example.test', 3724)
+            profile = json.loads((state / 'hermes.json').read_text())
+            self.assertEqual(profile['LoggingOptions']['NetworkLevel'], 'Information')

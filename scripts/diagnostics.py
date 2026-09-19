@@ -9,6 +9,7 @@ import traceback
 import uuid
 from pathlib import Path
 import json
+import ipaddress
 import platform
 import re
 import socket
@@ -36,6 +37,8 @@ class Diagnostics:
         self.enabled = enabled
         self.session = session or uuid.uuid4().hex
         self.phase = 'initializing'
+        self.client_pid = None
+        self.last_client_connections = None
         self.guard = threading.Lock()
         self.path = state / 'verbose.jsonl'
         self.counts = Counter()
@@ -125,6 +128,19 @@ class Diagnostics:
             except OSError as error:
                 self.emit('portal_resolution_failed', host=host, errno=error.errno)
 
+    def client_connections(self):
+        if not self.enabled or not self.client_pid:
+            return
+        try:
+            result = subprocess.run(['netstat', '-ano'], capture_output=True,
+                                    text=True, errors='replace', timeout=4, check=True)
+            connections = parse_client_connections(result.stdout, self.client_pid)
+            if connections != self.last_client_connections:
+                self.emit('client_tcp_connections', connections=connections)
+                self.last_client_connections = connections
+        except (OSError, subprocess.SubprocessError) as error:
+            self.emit('client_tcp_inspection_failed', error_type=type(error).__name__)
+
     def catalog(self, target):
         if not self.enabled:
             return
@@ -153,6 +169,11 @@ class Diagnostics:
                 if source == 'hermes':
                     for pattern, name in (
                         ('TLS handshake failed for ', 'tls_handshake_failed'),
+                        ('Accepting connection from ', 'connection_accepted'),
+                        ('Client requested service ', 'bnet_service_request'),
+                        ('Battlenet.LogonRequest:', 'bnet_logon_rejected'),
+                        ('Dropping frame service ', 'bnet_frame_rejected'),
+                        ('Malformed frame header from ', 'bnet_frame_malformed'),
                         ('Connecting to auth server...', 'backend_auth_attempt'),
                         ('Authentication succeeded!', 'authentication_succeeded'),
                         ('Authentication failed!', 'authentication_failed'),
@@ -174,6 +195,8 @@ class Diagnostics:
                         'phase', 'saved_account', 'certificate_match', 'ssl_policy_errors',
                         'http_status', 'client_pid', 'client_exit', 'failure_hresult',
                     }:
+                        if match[1] == 'client_pid':
+                            self.client_pid = int(match[2])
                         self.emit('helper_' + match[1], value=int(match[2]))
                         continue
                 self.counts[source + '_lines'] += 1
@@ -183,3 +206,27 @@ class Diagnostics:
                     if self.counts[event] <= 20:
                         self.emit(event, source=source)
         self.emit('output_closed', source=source)
+
+
+def parse_client_connections(output, pid):
+    """Extract only owning PID, state and ports; omit remote addresses and unrelated processes."""
+    connections = []
+    for line in output.splitlines():
+        columns = line.split()
+        if len(columns) != 5 or columns[0] != 'TCP' or columns[-1] != str(pid):
+            continue
+        try:
+            local_port = int(columns[1].rsplit(':', 1)[1])
+            host, remote_port = columns[2].rsplit(':', 1)
+            remote_port = int(remote_port)
+            address = ipaddress.ip_address(host.strip('[]').split('%', 1)[0])
+            loopback = address.is_loopback or bool(getattr(address, 'ipv4_mapped', None) and address.ipv4_mapped.is_loopback)
+        except ValueError:
+            continue
+        status = columns[3] if columns[3] in {
+            'CLOSED', 'LISTENING', 'SYN_SENT', 'SYN_RECEIVED', 'SYN_RECV', 'ESTABLISHED',
+            'FIN_WAIT_1', 'FIN_WAIT_2', 'CLOSE_WAIT', 'CLOSING', 'LAST_ACK', 'TIME_WAIT',
+        } else 'unknown'
+        connections.append(dict(local_port=local_port, remote_port=remote_port,
+                                remote_loopback=loopback, state=status))
+    return sorted(connections, key=lambda c: (c['local_port'], c['remote_port'], c['state']))[:64]
