@@ -8,6 +8,13 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
+bool verbose = args.Length == 3 && args[2] == "--verbose";
+if (verbose) args = args[..2];
+void Trace(string name, long value)
+{
+    if (verbose) Console.WriteLine($"WRATH_DIAG {name} {value}");
+}
+
 if (args.Length == 1 && args[0] == "self-test")
 {
     if (!OperatingSystem.IsWindows()) return 2;
@@ -18,7 +25,7 @@ if (args.Length == 1 && args[0] == "self-test")
 
 if (args.Length != 2 || args[0] is not ("remember" or "forget" or "run"))
 {
-    Console.Error.WriteLine("Usage: WrathLogin remember|forget|run installation.json");
+    Console.Error.WriteLine("Usage: WrathLogin remember|forget|run installation.json [--verbose]");
     return 2;
 }
 if (!OperatingSystem.IsWindows())
@@ -75,7 +82,9 @@ try
         // This path is also substituted by the build-specific PE patcher.
         const string loginPath = @"Software\WotLK HermesProxy\Battle.net\Launch Options\WoW";
         phase = "reading Credential Manager";
+        Trace("phase", 1);
         var saved = Credentials.Read(credentialName);
+        Trace("saved_account", saved is null ? 0 : 1);
         using var registry = Registry.CurrentUser.CreateSubKey(loginPath, true);
         void ClearTicket()
         {
@@ -89,15 +98,23 @@ try
                 var locale = root.GetProperty("locale").GetString()!;
                 if (!Regex.IsMatch(locale, "^[a-z]{2}[A-Z]{2}$")) throw new InvalidOperationException("Invalid locale.");
                 phase = "validating the bridge certificate and requesting a login ticket";
+                Trace("phase", 2);
                 using var certificate = X509CertificateLoader.LoadPkcs12FromFile(root.GetProperty("certificate_pfx").GetString()!, null);
                 var pinned = certificate.GetCertHash(HashAlgorithmName.SHA256);
                 using var handler = new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false };
-                handler.ServerCertificateCustomValidationCallback = (_, cert, _, _) => cert is not null && CryptographicOperations.FixedTimeEquals(cert.GetCertHash(HashAlgorithmName.SHA256), pinned);
+                handler.ServerCertificateCustomValidationCallback = (_, cert, _, errors) =>
+                {
+                    bool matches = cert is not null && CryptographicOperations.FixedTimeEquals(cert.GetCertHash(HashAlgorithmName.SHA256), pinned);
+                    Trace("certificate_match", matches ? 1 : 0);
+                    Trace("ssl_policy_errors", (int)errors);
+                    return matches;
+                };
                 using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(25) };
                 var body = JsonSerializer.Serialize(new { inputs = new[] {
                     new { input_id = "account_name", value = saved.Value.User },
                     new { input_id = "password", value = saved.Value.Password } } });
                 using var response = await http.PostAsync($"https://127.0.0.1:8081/bnetserver/login/Wn64/54261/{locale}/", new StringContent(body, Encoding.UTF8, "application/json"));
+                Trace("http_status", (int)response.StatusCode);
                 response.EnsureSuccessStatusCode();
                 var raw = await response.Content.ReadAsByteArrayAsync();
                 if (raw.Length > 65536) throw new InvalidOperationException("Invalid login response.");
@@ -107,25 +124,30 @@ try
                     throw new InvalidOperationException("Server rejected saved credentials.");
                 // Current-user DPAPI, as consumed by the Windows launcher-login path.
                 phase = "preparing the encrypted launcher ticket";
+                Trace("phase", 3);
                 registry.SetValue("WEB_TOKEN", Credentials.Protect(Encoding.UTF8.GetBytes(ticket)), RegistryValueKind.Binary);
                 registry.SetValue("GAME_ACCOUNT", saved.Value.User.ToUpperInvariant(), RegistryValueKind.String);
                 registry.SetValue("CONNECTION_STRING", "127.0.0.1:1119", RegistryValueKind.String);
                 start.ArgumentList.Add("-launcherlogin");
             }
             phase = "starting the client";
+            Trace("phase", 4);
             using var game = Process.Start(start) ?? throw new InvalidOperationException("Client did not start.");
+            Trace("client_pid", game.Id);
             var exited = game.WaitForExitAsync();
             await Task.WhenAny(exited, Task.Delay(TimeSpan.FromMinutes(2)));
             ClearTicket();
             await exited;
+            Trace("client_exit", game.ExitCode);
             return game.ExitCode;
         }
         finally { ClearTicket(); }
     }
     finally { mutex.ReleaseMutex(); }
 }
-catch
+catch (Exception error)
 {
+    Trace("failure_hresult", error.HResult);
     // Exceptions from HTTP or credential APIs must never print secrets or response bodies.
     Console.Error.WriteLine($"Login/launch failed while {phase}. No credentials were logged.");
     return 1;

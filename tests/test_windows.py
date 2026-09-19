@@ -78,3 +78,55 @@ class WindowsTests(unittest.TestCase):
         config = windows.proxy_profile('example.test', 3724, Path('state'))
         self.assertEqual(config['ClientOptions']['ReportedOS'], 'Win')
         self.assertNotIn('CertificatePfxPath', config['ProxyNetworkOptions'])
+
+
+class DiagnosticsTests(unittest.TestCase):
+    def test_unknown_output_and_secrets_are_not_retained(self):
+        import io
+        import json
+        from diagnostics import Diagnostics
+        with tempfile.TemporaryDirectory() as tmp, patch('builtins.print'):
+            diag = Diagnostics(Path(tmp), True)
+            diag.consume(io.StringIO(
+                'TLS handshake failed for SECRET: password=SECRET\n'
+                'Authentication succeeded! account=SECRET\n'
+                'unknown raw packet SECRET\n'), 'hermes')
+            diag.consume(io.StringIO(
+                'WRATH_DIAG certificate_match 1\n'
+                'WRATH_DIAG password 123\n'
+                'WRATH_DIAG http_status 200 SECRET\n'), 'helper')
+            text = diag.path.read_text()
+            self.assertNotIn('SECRET', text)
+            self.assertNotIn('password', text)
+            events = [json.loads(line)['event'] for line in text.splitlines()]
+            self.assertIn('tls_handshake_failed', events)
+            self.assertIn('helper_certificate_match', events)
+            self.assertNotIn('helper_http_status', events)
+            self.assertEqual(diag.counts['hermes_lines'], 3)
+
+    def test_disabled_diagnostics_create_no_file(self):
+        from diagnostics import Diagnostics
+        with tempfile.TemporaryDirectory() as tmp:
+            diag = Diagnostics(Path(tmp))
+            diag.emit('test')
+            self.assertFalse(diag.path.exists())
+
+    def test_catalog_mismatch_is_recorded_without_raw_contents(self):
+        from diagnostics import Diagnostics
+        with tempfile.TemporaryDirectory() as tmp, patch('builtins.print'):
+            target = Path(tmp)
+            (target / '.build.info').write_text('SECRET modified catalog')
+            diag = Diagnostics(target, True)
+            diag.catalog(target)
+            text = diag.path.read_text()
+            self.assertIn('"build_config_matches": false', text)
+            self.assertNotIn('SECRET', text)
+
+    def test_repeated_events_are_bounded_but_counted(self):
+        import io
+        from diagnostics import Diagnostics
+        with tempfile.TemporaryDirectory() as tmp, patch('builtins.print'):
+            diag = Diagnostics(Path(tmp), True)
+            diag.consume(io.StringIO('TLS handshake failed for secret\n' * 30), 'hermes')
+            self.assertEqual(diag.counts['tls_handshake_failed'], 30)
+            self.assertEqual(diag.path.read_text().count('tls_handshake_failed'), 20)

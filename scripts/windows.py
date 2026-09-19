@@ -123,10 +123,17 @@ def stop(process):
             process.wait()
 
 
-def launch(state, config):
+def launch(state, config, diagnostics=None):
+    from diagnostics import Diagnostics
+    diag = diagnostics or Diagnostics(state)
     with lock(state / 'session.lock'):
+        diag.catalog(Path(config['target']))
+        diag.emit('verify_started')
         target = verify(config)
+        diag.emit('hashes_verified', hashes=config['hashes'])
         game_closed()
+        if diag.enabled:
+            diag.network(PORTS)
         if any(port_open(port) for port in PORTS):
             raise RuntimeError('A bridge port is occupied; close the other bridge first')
         # Keep the portal on the local bridge even after a client rewrites its WTF.
@@ -135,23 +142,54 @@ def launch(state, config):
         server = ThreadingHTTPServer(('127.0.0.1', 8090), Handler)
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
+        diag.emit('portal_configured', portal='127.0.0.1', certificate='bundled')
         proxy = launcher = None
+        readers = []
+
+        def capture(process, source):
+            if diag.enabled:
+                reader = threading.Thread(target=diag.consume, args=(process.stdout, source), daemon=True)
+                reader.start()
+                readers.append(reader)
         try:
             proxy = subprocess.Popen([config['proxy'], '--config', str(state / 'hermes.json')],
                                      cwd=Path(config['proxy']).parent,
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            wait_ready(proxy)
-            launcher = subprocess.Popen([config['launcher'], 'run', str(state / 'installation.json')],
-                                        cwd=Path(config['launcher']).parent)
+                                     stdout=subprocess.PIPE if diag.enabled else subprocess.DEVNULL,
+                                     stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
+            capture(proxy, 'hermes')
+            diag.emit('proxy_started', pid=proxy.pid)
+            try:
+                wait_ready(proxy)
+            finally:
+                if diag.enabled:
+                    diag.network(PORTS)
+            diag.emit('bridge_ready')
+            helper_args = [config['launcher'], 'run', str(state / 'installation.json')]
+            if diag.enabled:
+                helper_args.append('--verbose')
+            launcher = subprocess.Popen(helper_args, cwd=Path(config['launcher']).parent,
+                                        stdout=subprocess.PIPE if diag.enabled else None,
+                                        stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
+            capture(launcher, 'helper')
+            diag.emit('helper_started', pid=launcher.pid)
             while launcher.poll() is None:
                 if proxy.poll() is not None:
                     raise RuntimeError('HermesProxy stopped; close the game and restart the launcher')
                 time.sleep(.5)
             if launcher.returncode:
                 raise RuntimeError('Client/login helper exited with an error')
+        except Exception as error:
+            diag.emit('failure', error_type=type(error).__name__, errno=getattr(error, 'errno', None))
+            raise
         finally:
+            diag.emit('process_status', proxy_exit=proxy.poll() if proxy else None,
+                      helper_exit=launcher.poll() if launcher else None)
             stop(launcher)
             stop(proxy)
+            for reader in readers:
+                reader.join(timeout=3)
+            from metadata_server import ACTIVITY
+            diag.emit('session_summary', counts=dict(diag.counts), metadata=dict(ACTIVITY))
             server.shutdown()
             server.server_close()
             worker.join(timeout=3)
@@ -166,6 +204,7 @@ def main(argv=None):
     parser.add_argument('--server')
     parser.add_argument('--auth-port', type=int, default=3724)
     parser.add_argument('--locale', choices=('ruRU', 'enUS'), default='ruRU')
+    parser.add_argument('--verbose', action='store_true', help='Write sanitized diagnostics to STATE/verbose.jsonl (replaced each invocation)')
     parser.add_argument('--adopt', action='store_true')
     parser.add_argument('--no-launch', action='store_true')
     parser.add_argument('--experimental', action='store_true', help='Acknowledge Windows gameplay is not yet verified')
@@ -175,6 +214,9 @@ def main(argv=None):
     state = checked_path(args.state)
     state.mkdir(parents=True, exist_ok=True)
     os.environ['WRATH_STATE'] = str(state)
+    from diagnostics import Diagnostics
+    diag = Diagnostics(state, args.verbose)
+    diag.emit('command', command=args.command)
     if args.command == 'prepare':
         with lock(state / 'session.lock'):
             build(state)
@@ -205,6 +247,7 @@ def main(argv=None):
             if sha(target / EXE) != PINS['windows_x64_executable_sha256'] and (target / EXE).read_bytes() != patched:
                 raise RuntimeError('Unexpected executable changes; refusing to overwrite')
             from audit import audit
+            diag.catalog(target)
             audit(target, state, args.locale, platform='Windows')
             replacement = target / '_classic_/WowClassic.exe.tmp'
             checked_path(replacement).write_bytes(patched)
@@ -217,17 +260,21 @@ def main(argv=None):
                           hashes={**{key: sha(value) for key, value in tools.items()}, "client": sha(target / EXE)})
             write_json(state / 'installation.json', config)
         if not args.no_launch:
-            launch(state, config)
+            launch(state, config, diag)
         return
+    if not (state / 'installation.json').is_file():
+        diag.emit('installation_missing')
+        raise RuntimeError('No installation.json in the selected state. Run install successfully first, using the same --state directory.')
     config = json.loads((state / 'installation.json').read_text())
     if args.command in ('remember-account', 'forget-account'):
         if args.command == 'remember-account':
             verify(config)
         run([config['launcher'], 'remember' if args.command == 'remember-account' else 'forget', state / 'installation.json'])
     elif args.command == 'run':
-        launch(state, config)
+        launch(state, config, diag)
     elif args.command == 'audit':
         from audit import audit
+        diag.catalog(Path(config['target']))
         audit(verify(config), state, config['locale'], platform='Windows')
     else:
         verify(config)

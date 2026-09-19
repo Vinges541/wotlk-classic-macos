@@ -37,3 +37,37 @@ The helper's pinned HTTPS verification secures its own REST request; it does not
 6. Check that occupied ports are rejected and no bridge process remains after normal game exit.
 
 Use `--state` consistently for isolated tests. macOS Keychain items and installed apps are unaffected. Native Windows ARM64 is deferred; this patcher deliberately rejects ARM64 PE files.
+
+## Verbose diagnostics
+
+After updating the source, repeat the original
+`setup.ps1 install --experimental --server HOST --no-launch` command with the same
+state/target (and `--adopt` if applicable). Installation rebuilds the login helper
+and records its new hash. `prepare` alone leaves the installed hash outdated. Do not remove the CASC or executable checks to finish an installation.
+A missing `installation.json` means installation has not completed in that state;
+a catalog mismatch means `.build.info` does not contain the pinned build/CDN keys.
+
+```powershell
+.\setup.ps1 run --verbose
+```
+
+Reproduce the disconnect, then close WoW normally so the supervisor writes its
+summary. Send `%LOCALAPPDATA%\Wrath Classic Bridge\verbose.jsonl` together with the
+client's `Connection.log` and `WowConnection.log`. With `--state`, the diagnostic
+file is in that directory. Copy it before another verbose command: it is replaced
+on each invocation. `--verbose` is also accepted during install/audit for catalog
+comparison; it does not capture bootstrap/build output.
+
+The JSONL log includes timestamps, OS/Python version, verified component hashes,
+localhost resolution, loopback port readiness, process IDs/exit codes, metadata
+request/failure totals and an allowlist of Hermes authentication/TLS events.
+Unknown proxy output is discarded; repeated events are capped at 20 with totals
+retained. No raw packets, account names, passwords, tickets or HTTP bodies are
+written. TLS handshake failures are recorded without their raw exception text.
+
+The updated login helper reports saved-account presence, certificate match,
+.NET `SslPolicyErrors` flags, HTTP status and numeric failure HRESULT. Phases are
+1: credential lookup, 2: certificate/ticket request, 3: encrypted registry ticket,
+4: client start. These HTTPS diagnostics apply to the helper; they do **not** prove
+that WoW accepts the certificate. Manual login skips the helper's HTTPS request.
+A `bridge_ready` event only establishes TCP listeners, not successful TLS/login.

@@ -62,7 +62,12 @@ def audit(target, state, locale, platform="OSX", arch="x86_64"):
         raise RuntimeError("Incomplete CASC install")
     build_info = (target / ".build.info").read_text()
     if PINS["build_config"] not in build_info or PINS["cdn_config"] not in build_info:
-        raise ValueError("CASC build does not match 3.4.3.54261")
+        raise ValueError(
+            "CASC build does not match 3.4.3.54261: .build.info must contain "
+            f"BuildConfig={PINS['build_config']} and CDNConfig={PINS['cdn_config']}. "
+            "Use the stock pinned client catalog; modified/HD catalogs are not supported "
+            "by this audit. Do not bypass this check."
+        )
     store = RecoveredStorage(target)
     store.full_keys = set()
     store._scan()  # Deliberately do not call initialize(), which may repair files.

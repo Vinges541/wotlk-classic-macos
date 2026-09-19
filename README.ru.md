@@ -83,3 +83,9 @@ PYTHONPATH=scripts .state/venv/bin/python -m unittest discover -s tests
 Дополнительная документация на английском: [устройство входа](docs/LOGIN.md) · [TLS на macOS](docs/TLS.md) · [результаты проверок](docs/VALIDATION.md) · [лицензии сторонних компонентов](docs/THIRD_PARTY.md).
 
 Лицензия: GPL-3.0.
+
+Для диагностики Windows: `.\setup.ps1 run --verbose`. После воспроизведения ошибки
+закройте WoW и сохраните `%LOCALAPPDATA%\Wrath Classic Bridge\verbose.jsonl`.
+Файл перезаписывается следующим запуском с `--verbose`; при `--state` он находится
+в указанном каталоге. Порядок обновления helper и состав безопасного лога:
+[диагностика Windows](docs/WINDOWS.md#verbose-diagnostics).

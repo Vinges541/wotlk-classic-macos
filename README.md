@@ -83,3 +83,8 @@ On Windows, `setup.ps1 prepare` builds the pinned dependencies and helper withou
 [Login design](docs/LOGIN.md) · [macOS TLS](docs/TLS.md) · [Validation](docs/VALIDATION.md) · [Third-party licenses](docs/THIRD_PARTY.md)
 
 License: GPL-3.0.
+
+Windows diagnostics: `./setup.ps1 run --verbose` writes sanitized events to
+`%LOCALAPPDATA%\Wrath Classic Bridge\verbose.jsonl`. Close WoW to finish the log
+and copy it before the next verbose invocation. See [helper update instructions
+and diagnostic fields](docs/WINDOWS.md#verbose-diagnostics).
