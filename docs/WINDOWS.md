@@ -54,11 +54,24 @@ a catalog mismatch means `.build.info` does not contain the pinned build/CDN key
 Reproduce the disconnect, then close WoW normally so the supervisor writes its
 summary. Send `%LOCALAPPDATA%\WoTLK Classic Bridge\verbose.jsonl` together with the
 client's `Connection.log` and `WowConnection.log`. With `--state`, the diagnostic
-file is in that directory. Copy it before another verbose command: it is replaced
-on each invocation. `--verbose` is also accepted during install/audit for catalog
-comparison; it does not capture bootstrap/build output.
+file is in that directory. New attempts append to this file; they do not erase
+previous failures. Each record carries a session ID and process ID, with the
+same session shared by bootstrap and launcher. `--verbose` applies to
+install/prepare/run/check/audit and starts before prerequisite checks and pip.
+If the state directory cannot be used, setup prints a temporary diagnostic path.
+Python itself must be available to start bootstrap and create diagnostics.
 
-The JSONL log includes timestamps, OS/Python version, verified component hashes,
+The JSONL log includes installation phases (prerequisites, virtual environment,
+dependencies, source retrieval, builds, download/adoption, executable checks,
+CASC audit, shortcut and installation manifest), redacted stdout/stderr from
+Git/pip/.NET/CASC setup tools, command exit codes and elapsed times. Failures
+include their phase, exception type/message, OS error codes and Python frame
+locations without locals or source-line contents. Tool arguments and environment
+variables are not dumped. Common credential headers/assignments and URL userinfo
+or query strings are redacted from tool output. Build logs can contain local
+paths; they are distinct from game authentication output.
+
+Runtime events include timestamps, OS/Python version, verified component hashes,
 localhost resolution, loopback port readiness, process IDs/exit codes, metadata
 request/failure totals and an allowlist of Hermes authentication/TLS events.
 Unknown proxy output is discarded; repeated events are capped at 20 with totals

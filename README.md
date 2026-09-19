@@ -84,9 +84,9 @@ On Windows, `setup.ps1 prepare` builds the pinned dependencies and helper withou
 
 License: GPL-3.0.
 
-Windows diagnostics: `./setup.ps1 run --verbose` writes sanitized events to
-`%LOCALAPPDATA%\WoTLK Classic Bridge\verbose.jsonl`. Close WoW to finish the log
-and copy it before the next verbose invocation. See [helper update instructions
+Windows diagnostics: add `--verbose` to `install` or `run` to append setup and launch events to
+`%LOCALAPPDATA%\WoTLK Classic Bridge\verbose.jsonl`. Setup tool output and early
+errors are included; previous attempts are retained. Close WoW to finish a run log. See [helper update instructions
 and diagnostic fields](docs/WINDOWS.md#verbose-diagnostics).
 
 Existing installations in the former state directory are detected automatically

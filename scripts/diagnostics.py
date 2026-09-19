@@ -1,5 +1,13 @@
-"""Opt-in, structured diagnostics. Never persist raw child output or credentials."""
+"""Opt-in setup diagnostics with redacted tool output and allowlisted auth events."""
+import contextlib
+import contextvars
 import datetime
+import os
+import subprocess
+import time
+import traceback
+import uuid
+from pathlib import Path
 import json
 import platform
 import re
@@ -8,14 +16,32 @@ import threading
 from collections import Counter
 
 
+ACTIVE_SETUP = contextvars.ContextVar('setup_diagnostics', default=None)
+
+
+def sanitize(text):
+    """Redact common tool credentials; auth/packet streams never enter this path."""
+    text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', str(text))
+    text = re.sub(r'(?i)(https?://)[^/\s@]+@', r'\1[redacted]@', text)
+    text = re.sub(r'(https?://[^\s?#]+)[?#][^\s]*', r'\1?[redacted]', text)
+    # Drop the entire line for credential-bearing headers/assignments, including
+    # quoted values containing spaces. Do not guess where a secret ends.
+    if re.search(r'(?i)(authorization|password|passwd|token|secret|api[_-]?key|cookie)\s*["\']?\s*[:=]|\bBearer\s+|HP-[0-9a-f]{40}|gh[pousr]_[A-Za-z0-9]+|github_pat_', text):
+        return '[credential-bearing tool line redacted]'
+    return text[:16384]
+
+
 class Diagnostics:
-    def __init__(self, state, enabled=False):
+    def __init__(self, state, enabled=False, session=None):
         self.enabled = enabled
+        self.session = session or uuid.uuid4().hex
+        self.phase = 'initializing'
         self.guard = threading.Lock()
         self.path = state / 'verbose.jsonl'
         self.counts = Counter()
         if enabled:
-            self.path.write_text('', encoding='utf-8')
+            # Append across invocations; bootstrap and child share a session ID.
+            self.path.touch(exist_ok=True)
             print('Verbose diagnostics: ' + str(self.path), flush=True)
             self.emit('environment', python=platform.python_version(), os=platform.system(),
                       release=platform.release(), machine=platform.machine())
@@ -24,12 +50,70 @@ class Diagnostics:
         if not self.enabled:
             return
         record = dict(time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                      event=event, **fields)
+                      event=event, session=self.session, process_id=os.getpid(), **fields)
         line = json.dumps(record, sort_keys=True)
         with self.guard:
             with self.path.open('a', encoding='utf-8') as stream:
                 stream.write(line + '\n')
             print('[verbose] ' + line, flush=True)
+
+    @contextlib.contextmanager
+    def setup(self):
+        token = ACTIVE_SETUP.set(self if self.enabled else None)
+        try:
+            yield
+        finally:
+            ACTIVE_SETUP.reset(token)
+
+    def mark(self, phase):
+        self.phase = phase
+        self.emit('phase_started', phase=phase)
+
+    def failure(self, error, include_message=True):
+        self.emit('failure', phase=self.phase, error_type=type(error).__name__,
+                  message=sanitize(str(error)) if include_message else '[omitted for authentication]',
+                  errno=getattr(error, 'errno', None),
+                  winerror=getattr(error, 'winerror', None),
+                  returncode=getattr(error, 'returncode', None),
+                  frames=[dict(file=Path(frame.filename).name, line=frame.lineno,
+                               function=frame.name)
+                          for frame in traceback.extract_tb(error.__traceback__)])
+
+    def run_tool(self, argv, **kwargs):
+        """Stream build tools only. Arguments/env are deliberately not logged."""
+        if not self.enabled:
+            return subprocess.run([str(a) for a in argv], check=True, **kwargs)
+        program = Path(str(argv[0])).name
+        started = time.monotonic()
+        self.emit('tool_started', program=program, phase=self.phase)
+        output = []
+        try:
+            with subprocess.Popen([str(a) for a in argv], stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, text=True,
+                                  encoding='utf-8', errors='replace', **kwargs) as process:
+                try:
+                    for line in process.stdout:
+                        output.append(line[:16384])
+                        output = output[-100:]
+                        self.emit('tool_output', program=program, text=sanitize(line.rstrip()))
+                    code = process.wait()
+                except BaseException:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    raise
+            self.emit('tool_finished', program=program, returncode=code,
+                      elapsed_seconds=round(time.monotonic() - started, 3))
+            if code:
+                # Do not include argv (which can contain URLs/credentials) in errors.
+                raise subprocess.CalledProcessError(code, program)
+            return subprocess.CompletedProcess(program, code, ''.join(output))
+        except OSError as error:
+            self.failure(error)
+            raise
 
     def network(self, ports):
         from common import port_open

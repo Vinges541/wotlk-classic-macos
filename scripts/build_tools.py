@@ -20,8 +20,14 @@ def source(name, state):
     stamp = destination / ".wrath-source.json"
     expected = {"commit": pin["commit"], "patch_sha256": sha(patch) if patch else None}
     if stamp.exists():
-        if json.loads(stamp.read_text()) != expected:
-            raise RuntimeError("Source pin changed; choose a fresh --state directory")
+        installed = json.loads(stamp.read_text())
+        if installed != expected:
+            raise RuntimeError(
+                f"Source pin changed for {name}: installed commit={installed.get('commit')}, "
+                f"expected commit={expected['commit']}; installed patch SHA256={installed.get('patch_sha256')}, "
+                f"expected patch SHA256={expected['patch_sha256']}. "
+                "Source was left unchanged; use a matching source version or a separate --state directory."
+            )
         return destination
     if destination.exists():
         # A failed network fetch is resumable; an unknown checkout is not overwritten.
@@ -47,9 +53,11 @@ def version_source(repo):
     # GitVersion traverses history; this build uses an exact commit and explicit version.
     version = PINS["sources"]["HermesProxy"]["version"]
     major, minor, patch = version.split(".")
-    date = subprocess.check_output(
-        ["git", "-C", str(repo), "show", "-s", "--format=%cI", "HEAD"], text=True
-    ).strip()
+    from diagnostics import ACTIVE_SETUP
+    diag = ACTIVE_SETUP.get()
+    command = ["git", "-C", str(repo), "show", "-s", "--format=%cI", "HEAD"]
+    date = (diag.run_tool(command).stdout if diag is not None
+            else subprocess.check_output(command, text=True)).strip()
     fields = {
         "Major": major,
         "Minor": minor,

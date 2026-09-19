@@ -35,22 +35,35 @@ def validate_client(target):
 
 def build(state):
     from build_tools import source, version_source
+    from diagnostics import ACTIVE_SETUP
+    diag = ACTIVE_SETUP.get()
+    def phase(name):
+        if diag:
+            diag.mark(name)
+    phase('source_cascette')
     cascette = source('cascette-py', state)
+    phase('install_cascette')
     run([sys.executable, '-m', 'pip', 'install', '--no-deps', '--no-build-isolation', cascette])
+    phase('source_hermes')
     hermes = source('HermesProxy', state)
+    phase('source_wow_patcher')
     source('wow-patcher', state)
+    phase('hermes_version')
     version_source(hermes)
     proxy = state / 'components/hermes'
     launcher = state / 'components/login'
     version = PINS['sources']['HermesProxy']['version']
+    phase('publish_hermes')
     run(['dotnet', 'publish', hermes / 'HermesProxy', '-c', 'Release', '-r', 'win-x64',
          '--self-contained', 'true', '-p:DisableGitVersionTask=true',
          '-p:GenerateGitVersionInformation=false', '-p:UpdateVersionProperties=false',
          f'-p:Version={version}', f'-p:AssemblyVersion={version}', f'-p:FileVersion={version}',
          '-o', proxy])
+    phase('publish_login_helper')
     run(['dotnet', 'publish', REPO / 'windows', '-c', 'Release', '-r', 'win-x64',
          '--self-contained', 'true', '-p:BaseIntermediateOutputPath=' + str(state / 'build/login-obj') + '/',
          '-o', launcher])
+    phase('install_certificate')
     certificate = state / 'tls/BNetServer.pfx'
     certificate.parent.mkdir(exist_ok=True)
     shutil.copyfile(hermes / 'HermesProxy/BNetServer.pfx', certificate)
@@ -205,7 +218,7 @@ def main(argv=None):
     parser.add_argument('--server')
     parser.add_argument('--auth-port', type=int, default=3724)
     parser.add_argument('--locale', choices=('ruRU', 'enUS'), default='ruRU')
-    parser.add_argument('--verbose', action='store_true', help='Write sanitized diagnostics to STATE/verbose.jsonl (replaced each invocation)')
+    parser.add_argument('--verbose', action='store_true', help='Append setup and launch diagnostics to STATE/verbose.jsonl')
     parser.add_argument('--adopt', action='store_true')
     parser.add_argument('--no-launch', action='store_true')
     parser.add_argument('--experimental', action='store_true', help='Acknowledge Windows gameplay is not yet verified')
@@ -216,53 +229,91 @@ def main(argv=None):
     state.mkdir(parents=True, exist_ok=True)
     os.environ['WRATH_STATE'] = str(state)
     from diagnostics import Diagnostics
-    diag = Diagnostics(state, args.verbose)
+    diag = Diagnostics(state, args.verbose, session=os.environ.get('WOTLK_DIAGNOSTIC_SESSION'))
+    dispatch(args, state, diag, parser)
+
+
+def dispatch(args, state, diag, parser):
     diag.emit('command', command=args.command)
+    try:
+        if args.command in ('install', 'prepare'):
+            with diag.setup():
+                execute(args, state, diag, parser)
+        else:
+            execute(args, state, diag, parser)
+        diag.emit('command_finished', command=args.command, returncode=0)
+    except BaseException as error:
+        diag.failure(error, include_message=args.command not in ('remember-account', 'forget-account'))
+        raise
+
+
+def execute(args, state, diag, parser):
     if args.command == 'prepare':
+        diag.mark('prepare_tools')
         with lock(state / 'session.lock'):
             build(state)
         return
     if args.command == 'install':
+        diag.mark('install_arguments')
         if not args.experimental:
-            parser.error('Windows is a test build: supply --experimental to install it')
+            raise RuntimeError('Windows is a test build: supply --experimental to install it')
         if not args.server or not 1 <= args.auth_port <= 65535:
-            parser.error('install requires --server and a valid auth port')
+            raise RuntimeError('install requires --server and a valid auth port')
+        diag.mark('installation_lock')
         with lock(state / 'session.lock'):
+            diag.mark('client_closed_check')
             game_closed()
+            diag.mark('installation_settings')
             target = checked_path(args.target)
             target.mkdir(parents=True, exist_ok=True)
             prior = state / 'installation.json'
             if prior.exists() and json.loads(prior.read_text())['target'] != str(target):
                 raise RuntimeError('State already manages another client; use a different --state')
+            diag.mark('build_tools')
             tools = build(state)
+            diag.mark('adopt_client' if args.adopt else 'download_client')
             if not args.adopt:
                 from client import download_client
                 download_client(target, state, args.locale, platform='Windows')
+            diag.mark('verify_original_executable')
             original = state / 'original-WowClassic.exe'
             if sha(target / EXE) == PINS['windows_x64_executable_sha256']:
                 shutil.copyfile(target / EXE, original)
             elif not original.exists():
                 raise RuntimeError('Original executable is required for patch verification')
+            diag.mark('patch_verification')
             from pe import patch
             patched, report = patch(original.read_bytes(), state / 'src/wow-patcher')
             if sha(target / EXE) != PINS['windows_x64_executable_sha256'] and (target / EXE).read_bytes() != patched:
                 raise RuntimeError('Unexpected executable changes; refusing to overwrite')
+            diag.mark('casc_audit')
             from audit import audit
             diag.catalog(target)
             audit(target, state, args.locale, platform='Windows')
+            diag.mark('install_patched_executable')
             replacement = target / '_classic_/WowClassic.exe.tmp'
             checked_path(replacement).write_bytes(patched)
             replacement.replace(target / EXE)
             write_json(state / "pe-patches.json", report)
             configure(target, state, args.server, args.auth_port)
+            diag.mark('install_launcher')
             install_launcher(target, state)
             config = dict(tools, target=str(target), server=args.server,
                           auth_port=args.auth_port, locale=args.locale,
                           hashes={**{key: sha(value) for key, value in tools.items()}, "client": sha(target / EXE)})
+            diag.mark('write_installation')
             write_json(state / 'installation.json', config)
         if not args.no_launch:
-            launch(state, config, diag)
+            # Authentication output is never treated as build output.
+            from diagnostics import ACTIVE_SETUP
+            token = ACTIVE_SETUP.set(None)
+            try:
+                diag.mark('launch')
+                launch(state, config, diag)
+            finally:
+                ACTIVE_SETUP.reset(token)
         return
+    diag.mark('read_installation')
     if not (state / 'installation.json').is_file():
         diag.emit('installation_missing')
         raise RuntimeError('No installation.json in the selected state. Run install successfully first, using the same --state directory.')
@@ -272,6 +323,7 @@ def main(argv=None):
             verify(config)
         run([config['launcher'], 'remember' if args.command == 'remember-account' else 'forget', state / 'installation.json'])
     elif args.command == 'run':
+        diag.mark('launch')
         launch(state, config, diag)
     elif args.command == 'audit':
         from audit import audit

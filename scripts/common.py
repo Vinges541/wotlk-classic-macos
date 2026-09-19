@@ -93,5 +93,9 @@ def port_open(port):
 
 
 def run(argv, **kwargs):
+    from diagnostics import ACTIVE_SETUP
+    diag = ACTIVE_SETUP.get()
+    if diag is not None:
+        return diag.run_tool(argv, **kwargs)
     print("Running " + Path(str(argv[0])).name, flush=True)
     subprocess.run([str(a) for a in argv], check=True, **kwargs)
