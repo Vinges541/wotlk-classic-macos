@@ -168,6 +168,8 @@ def launch(state, config, diagnostics=None):
         diag.emit('portal_configured', portal='127.0.0.1', certificate='bundled')
         proxy = launcher = None
         readers = []
+        from client_diagnostics import ClientLogProbe
+        client_log = ClientLogProbe(target, diag)
 
         def capture(process, source):
             if diag.enabled:
@@ -215,6 +217,7 @@ def launch(state, config, diagnostics=None):
             stop(proxy)
             for reader in readers:
                 reader.join(timeout=3)
+            client_log.collect()
             from metadata_server import ACTIVITY
             diag.emit('session_summary', counts=dict(diag.counts), metadata=dict(ACTIVITY))
             server.shutdown()
