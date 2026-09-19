@@ -26,6 +26,7 @@ if (!OperatingSystem.IsWindows())
     Console.Error.WriteLine("Windows is required.");
     return 2;
 }
+var phase = "reading installation settings";
 try
 {
     using var config = JsonDocument.Parse(File.ReadAllText(args[1]));
@@ -48,6 +49,7 @@ try
         Console.WriteLine();
         if (username.Length == 0 || password.Length == 0 || Encoding.UTF8.GetByteCount(username) > 640)
             throw new InvalidOperationException("Enter a nonempty account and password.");
+        phase = "saving the account in Credential Manager";
         Credentials.Save(credentialName, username, password.ToString());
         password.Clear();
         Console.WriteLine("Account saved in Windows Credential Manager.");
@@ -55,6 +57,7 @@ try
     }
     if (args[0] == "forget")
     {
+        phase = "removing the saved account";
         Credentials.Delete(credentialName);
         Console.WriteLine("Saved account removed.");
         return 0;
@@ -71,6 +74,7 @@ try
         var start = new ProcessStartInfo(executable) { WorkingDirectory = Path.GetDirectoryName(executable)!, UseShellExecute = false };
         // This path is also substituted by the build-specific PE patcher.
         const string loginPath = @"Software\WotLK HermesProxy\Battle.net\Launch Options\WoW";
+        phase = "reading Credential Manager";
         var saved = Credentials.Read(credentialName);
         using var registry = Registry.CurrentUser.CreateSubKey(loginPath, true);
         void ClearTicket()
@@ -84,6 +88,7 @@ try
             {
                 var locale = root.GetProperty("locale").GetString()!;
                 if (!Regex.IsMatch(locale, "^[a-z]{2}[A-Z]{2}$")) throw new InvalidOperationException("Invalid locale.");
+                phase = "validating the bridge certificate and requesting a login ticket";
                 using var certificate = X509CertificateLoader.LoadPkcs12FromFile(root.GetProperty("certificate_pfx").GetString()!, null);
                 var pinned = certificate.GetCertHash(HashAlgorithmName.SHA256);
                 using var handler = new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false };
@@ -101,11 +106,13 @@ try
                 if (result.RootElement.GetProperty("authentication_state").GetString() != "DONE" || !Regex.IsMatch(ticket, "^HP-[0-9A-Fa-f]{40}$"))
                     throw new InvalidOperationException("Server rejected saved credentials.");
                 // Current-user DPAPI, as consumed by the Windows launcher-login path.
+                phase = "preparing the encrypted launcher ticket";
                 registry.SetValue("WEB_TOKEN", Credentials.Protect(Encoding.UTF8.GetBytes(ticket)), RegistryValueKind.Binary);
                 registry.SetValue("GAME_ACCOUNT", saved.Value.User.ToUpperInvariant(), RegistryValueKind.String);
                 registry.SetValue("CONNECTION_STRING", "127.0.0.1:1119", RegistryValueKind.String);
                 start.ArgumentList.Add("-launcherlogin");
             }
+            phase = "starting the client";
             using var game = Process.Start(start) ?? throw new InvalidOperationException("Client did not start.");
             var exited = game.WaitForExitAsync();
             await Task.WhenAny(exited, Task.Delay(TimeSpan.FromMinutes(2)));
@@ -120,7 +127,7 @@ try
 catch
 {
     // Exceptions from HTTP or credential APIs must never print secrets or response bodies.
-    Console.Error.WriteLine("Login/launch failed. Check the bridge, or save your server account again.");
+    Console.Error.WriteLine($"Login/launch failed while {phase}. No credentials were logged.");
     return 1;
 }
 

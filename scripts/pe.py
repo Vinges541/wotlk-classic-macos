@@ -39,7 +39,10 @@ def patch(original, patcher_source):
     constants = (Path(patcher_source) / 'src/trinity/mod.rs').read_text()
     def key(name):
         value = constants.split(f'pub const {name}:', 1)[1].split('= &[', 1)[1].split('];', 1)[0]
-        return bytes(int(x, 16) for x in re.findall(r'0x([0-9a-fA-F]{2})', value))
+        result = bytes(int(x, 16) for x in re.findall(r'0x([0-9a-fA-F]{2})', value))
+        if len(result) != (256 if name == 'RSA_MODULUS' else 32):
+            raise ValueError('Unexpected upstream public key size')
+        return result
     replacements = [
         ('connect-to', bytes.fromhex('91d59bb7d4e183a5'), key('RSA_MODULUS'), 256),
         ('ed25519', bytes.fromhex('15d618bd7db577bd'), key('CRYPTO_ED25519_PUBLIC_KEY'), 32),
