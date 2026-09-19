@@ -131,6 +131,14 @@ probes may generate TLS failures before the game starts, so those events alone
 do not establish a client certificate rejection. A successful helper REST login
 likewise does not establish that the game's BNet connection completed.
 
+After the helper exits, verbose mode reads new or replaced content from the
+game's `Logs/BattleNet.log` (at most its final 1 MiB). It emits only fixed login
+stages, numeric error codes/ports and endpoint classifications, never raw lines,
+account names, tickets or remote hostnames. Existing unchanged log content is
+excluded. `client_login_log` distinguishes missing, unchanged and updated logs;
+`client_login_stage` helps distinguish a missing launcher ticket, a wrong portal,
+a certificate download error and a login that has reached the realm list.
+
 The helper keeps the named mutex acquisition and release on the same synchronous
 entry thread while awaiting login/process work internally. Its `self-test-lock`
 command checks exclusion across an async thread switch, exception propagation,
